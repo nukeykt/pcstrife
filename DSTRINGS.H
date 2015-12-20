@@ -41,7 +41,7 @@
 //  relative to current position.
 // Path names are OS-sensitive.
 //
-#define DEVMAPS "devmaps"
+#define DEVMAPS "f:/st/"
 #define DEVDATA "devdata"
 
 

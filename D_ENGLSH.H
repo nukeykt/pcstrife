@@ -28,8 +28,8 @@
 //
 // D_Main.C
 //
-#define D_DEVSTR	"Development mode ON.\n"
-#define D_CDROM	"CD-ROM Version: default.cfg from c:\\doomdata\n"
+#define D_DEVSTR    "Development mode ON.\n"
+#define D_CDROM     "CD-ROM Version: \nAccessing strife.cd\n"
 
 //
 //	M_Menu.C

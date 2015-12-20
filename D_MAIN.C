@@ -1,6 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
+// Copyright (C) 2005-2014 Simon Howard
 // Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
@@ -21,8 +22,10 @@
 //
 
 
-#define	BGCOLOR		4
-#define	FGCOLOR		7
+#define	BGCOLOR		0
+#define	FGCOLOR		2
+#define	BGCOLOR2	2
+#define	FGCOLOR2	1
 
 #include <stdlib.h>
 #include <dos.h>
@@ -74,20 +77,22 @@
 //  calls all ?_Responder, ?_Ticker, and ?_Drawer,
 //  calls I_GetTime, I_StartFrame, and I_StartTic
 //
-void D_DoomLoop (void);
+void D_DoomLoop(void);
 
 
-char*		wadfiles[MAXWADFILES];
+char*           wadfiles[MAXWADFILES];
 
 
-boolean		devparm;	// started game with -devparm
-boolean         nomonsters;	// checkparm of -nomonsters
-boolean         respawnparm;	// checkparm of -respawn
-boolean         fastparm;	// checkparm of -fast
+boolean         devparm;        // started game with -devparm
+boolean         nomonsters;     // checkparm of -nomonsters
+boolean         respawnparm;    // checkparm of -respawn
+boolean         fastparm;       // checkparm of -fast
+boolean         flipparm;       // [STRIFE] haleyjd 20110629: checkparm of -flip
+boolean         randomparm;     // [STRIFE] haleyjd 20130915: checkparm of -random
 
-boolean         drone;
+boolean         showintro = true;   // [STRIFE] checkparm of -nograph, disables intro
 
-boolean		singletics = false; // debug flag to cancel adaptiveness
+boolean         singletics = false; // debug flag to cancel adaptiveness
 
 
 
@@ -95,29 +100,38 @@ boolean		singletics = false; // debug flag to cancel adaptiveness
 //extern  int	sfxVolume;
 //extern  int	musicVolume;
 
-extern  boolean	inhelpscreens;
+extern boolean  inhelpscreens;
 
-skill_t		startskill;
+skill_t         startskill;
 int             startepisode;
-int		startmap;
-boolean		autostart;
+int             startmap;
+boolean         autostart;
 
-FILE*		debugfile;
+FILE*           debugfile;
 
-boolean		advancedemo;
+boolean         advancedemo;
+
+// villsa [STRIFE] workparm variable (similar to devparm?)
+boolean         workparm = false;
+
+// villsa [STRIFE] stonecold cheat variable
+boolean         stonecold = false;
+
+// haleyjd 09/11/10: [STRIFE] Game type variables
+boolean         isregistered;
+boolean         isdemoversion;
 
 
 
+char            wadfile[1024];      // primary wad file
+char            mapdir[1024];       // directory of development maps
+char            basedefault[1024];  // default file
 
-char		wadfile[1024];		// primary wad file
-char		mapdir[1024];           // directory of development maps
-char		basedefault[1024];      // default file
 
-
-void D_CheckNetGame (void);
-void D_ProcessEvents (void);
-void G_BuildTiccmd (ticcmd_t* cmd);
-void D_DoAdvanceDemo (void);
+void D_CheckNetGame(void);
+void D_ProcessEvents(void);
+void G_BuildTiccmd(ticcmd_t* cmd);
+void D_DoAdvanceDemo(void);
 
 
 //
@@ -128,14 +142,14 @@ void D_DoAdvanceDemo (void);
 //
 event_t         events[MAXEVENTS];
 int             eventhead;
-int 		eventtail;
+int             eventtail;
 
 
 //
 // D_PostEvent
 // Called by the I/O functions when input is detected
 //
-void D_PostEvent (event_t* ev)
+void D_PostEvent(event_t* ev)
 {
     events[eventhead] = *ev;
     eventhead = (++eventhead)&(MAXEVENTS-1);
@@ -146,21 +160,26 @@ void D_PostEvent (event_t* ev)
 // D_ProcessEvents
 // Send all the events of the given timestamp down the responder chain
 //
-void D_ProcessEvents (void)
+void D_ProcessEvents(void)
 {
     event_t*	ev;
+
+    // haleyjd 08/22/2010: [STRIFE] there is no such thing as a "store demo" 
+    // version of Strife
 	
     // IF STORE DEMO, DO NOT ACCEPT INPUT
-    if ( commercial
-	 && (W_CheckNumForName("map01")<0) )
-      return;
+    //if ( commercial
+	// && (W_CheckNumForName("map01")<0) )
+    //  return;
 	
-    for ( ; eventtail != eventhead ; eventtail = (++eventtail)&(MAXEVENTS-1) )
+    for (; eventtail != eventhead; eventtail = (++eventtail) & (MAXEVENTS - 1))
     {
-	ev = &events[eventtail];
-	if (M_Responder (ev))
-	    continue;               // menu ate the event
-	G_Responder (ev);
+	    ev = &events[eventtail];
+        if (M_Responder(ev))
+        {
+            continue;   // menu ate the event
+        }
+	    G_Responder(ev);
     }
 }
 
@@ -171,114 +190,142 @@ void D_ProcessEvents (void)
 // D_Display
 //  draw current display, possibly wiping it from the previous
 //
-
 // wipegamestate can be set to -1 to force a wipe on the next draw
+//
+// haleyjd 08/23/10: [STRIFE]:
+// * Changes to eliminate intermission and change timing of screenwipe
+// * 20100901: Added ST_DrawExternal and popupactivestate static variable
+// * 20110206: Start wipegamestate at GS_UNKNOWN (STRIFE-TODO: rename?)
+//
 gamestate_t     wipegamestate = GS_DEMOSCREEN;
 extern  boolean setsizeneeded;
 extern  int             showMessages;
-void R_ExecuteSetViewSize (void);
+void R_ExecuteSetViewSize(void);
 
-void D_Display (void)
+void D_Display(void)
 {
-    static  boolean		viewactivestate = false;
-    static  boolean		menuactivestate = false;
-    static  boolean		inhelpscreensstate = false;
-    static  boolean		fullscreen = false;
-    static  gamestate_t		oldgamestate = -1;
-    static  int			borderdrawcount;
-    int				nowtime;
-    int				tics;
-    int				wipestart;
-    int				y;
-    boolean			done;
-    boolean			wipe;
-    boolean			redrawsbar;
+    static  boolean             viewactivestate = false;
+    static  boolean             menuactivestate = false;
+    static  boolean             inhelpscreensstate = false;
+    static  boolean             popupactivestate = false; // [STRIFE]
+    static  boolean             fullscreen = false;
+    static  gamestate_t         oldgamestate = -1;
+    static  int                 borderdrawcount;
+    int                         nowtime;
+    int                         tics;
+    int                         wipestart;
+    int                         y;
+    boolean                     done;
+    boolean                     wipe;
+    boolean                     redrawsbar;
 
     if (nodrawers)
-	return;                    // for comparative timing / profiling
-		
+    {
+        return; // for comparative timing / profiling
+    }
+
     redrawsbar = false;
-    
+
     // change the view size if needed
     if (setsizeneeded)
     {
-	R_ExecuteSetViewSize ();
-	oldgamestate = -1;                      // force background redraw
-	borderdrawcount = 3;
+        R_ExecuteSetViewSize();
+        oldgamestate = -1;  // force background redraw
+        borderdrawcount = 3;
     }
 
     // save the current screen if about to wipe
     if (gamestate != wipegamestate)
     {
-	wipe = true;
-	wipe_StartScreen(0, 0, SCREENWIDTH, SCREENHEIGHT);
+        wipe = true;
+        wipe_StartScreen(0, 0, SCREENWIDTH, SCREENHEIGHT);
     }
     else
-	wipe = false;
+    {
+        wipe = false;
+    }
 
     if (gamestate == GS_LEVEL && gametic)
-	HU_Erase();
-    
+    {
+        HU_Erase();
+    }
+
     // do buffered drawing
     switch (gamestate)
     {
-      case GS_LEVEL:
-	if (!gametic)
-	    break;
-	if (automapactive)
-	    AM_Drawer ();
-	if (wipe || (viewheight != 200 && fullscreen) )
-	    redrawsbar = true;
-	if (inhelpscreensstate && !inhelpscreens)
-	    redrawsbar = true;              // just put away the help screen
-	ST_Drawer (viewheight == 200, redrawsbar );
-	fullscreen = viewheight == 200;
-	break;
+    case GS_LEVEL:
+        if (!gametic)
+        {
+            break;
+        }
+        if (automapactive)
+        {
+            AM_Drawer();
+        }
+        if (wipe || (viewheight != 200 && fullscreen))
+        {
+            redrawsbar = true;
+        }
+        // haleyjd 08/29/10: [STRIFE] Always redraw sbar if menu is/was active
+        if (imenuactivestate || (nhelpscreensstate && !inhelpscreens))
+        {
+            redrawsbar = true;  // just put away the help screen
+        }
+        ST_Drawer(viewheight == 200, redrawsbar);
+        fullscreen = viewheight == 200;
+        break;
+      
+    // haleyjd 08/23/2010: [STRIFE] No intermission
+    /*
+    case GS_INTERMISSION:
+        WI_Drawer ();
+        break;
+    */
 
-      case GS_INTERMISSION:
-	WI_Drawer ();
-	break;
+    case GS_FINALE:
+        F_Drawer();
+        break;
 
-      case GS_FINALE:
-	F_Drawer ();
-	break;
-
-      case GS_DEMOSCREEN:
-	D_PageDrawer ();
-	break;
+    case GS_DEMOSCREEN:
+        D_PageDrawer();
+        break;
     }
-    
+
     // draw buffered stuff to screen
-    I_UpdateNoBlit ();
-    
+    I_UpdateNoBlit();
+
     // draw the view directly
     if (gamestate == GS_LEVEL && !automapactive && gametic)
-	R_RenderPlayerView (&players[displayplayer]);
+    {
+        R_RenderPlayerView(&players[displayplayer]);
+    }
 
-    if (gamestate == GS_LEVEL && gametic)
-	HU_Drawer ();
-    
     // clean up border stuff
     if (gamestate != oldgamestate && gamestate != GS_LEVEL)
-	I_SetPalette (W_CacheLumpName ("PLAYPAL",PU_CACHE));
+    {
+        I_SetPalette(W_CacheLumpName("PLAYPAL", PU_CACHE));
+    }
 
     // see if the border needs to be initially drawn
     if (gamestate == GS_LEVEL && oldgamestate != GS_LEVEL)
     {
-	viewactivestate = false;        // view was not active
-	R_FillBackScreen ();    // draw the pattern into the back screen
+        viewactivestate = false;    // view was not active
+        R_FillBackScreen(); // draw the pattern into the back screen
     }
 
     // see if the border needs to be updated to the screen
     if (gamestate == GS_LEVEL && !automapactive && scaledviewwidth != 320)
     {
-	if (menuactive || menuactivestate || !viewactivestate)
-	    borderdrawcount = 3;
-	if (borderdrawcount)
-	{
-	    R_DrawViewBorder ();    // erase old menu stuff
-	    borderdrawcount--;
-	}
+        if (menuactive || menuactivestate || !viewactivestate)
+        {
+            borderdrawcount = 3;
+            popupactivestate = false;
+        }
+        if (borderdrawcount)
+        {
+            R_DrawViewBorder(); // erase old menu stuff
+            borderdrawcount--;
+        }
 
     }
 
@@ -286,49 +333,70 @@ void D_Display (void)
     viewactivestate = viewactive;
     inhelpscreensstate = inhelpscreens;
     oldgamestate = wipegamestate = gamestate;
-    
+
+    // haleyjd 20120208: [STRIFE] Rogue moved this down to below border drawing
+    if (gamestate == GS_LEVEL && gametic)
+    {
+        HU_Drawer();
+        if (ST_DrawExternal())
+        {
+            popupactivestate = true;
+        }
+        else if (popupactivestate)
+        {
+            popupactivestate = false;
+            menuactivestate = 1;
+        }
+    }
+
     // draw pause pic
     if (paused)
     {
-	if (automapactive)
-	    y = 4;
-	else
-	    y = viewwindowy+4;
-	V_DrawPatchDirect(viewwindowx+(scaledviewwidth-68)/2,
-			  y,0,W_CacheLumpName ("M_PAUSE", PU_CACHE));
+        if (automapactive)
+        {
+            y = 4;
+        }
+        else
+        {
+            y = viewwindowy + 4;
+        }
+        V_DrawPatchDirect(viewwindowx + (scaledviewwidth - 68) / 2,
+                          y, 0, W_CacheLumpName("M_PAUSE", PU_CACHE));
     }
 
 
     // menus go directly to the screen
-    M_Drawer ();          // menu is drawn even on top of everything
-    NetUpdate ();         // send out any new accumulation
+    M_Drawer(); // menu is drawn even on top of everything
+    NetUpdate();    // send out any new accumulation
 
 
     // normal update
     if (!wipe)
     {
-	I_FinishUpdate ();              // page flip or blit buffer
-	return;
+        I_FinishUpdate();   // page flip or blit buffer
+        return;
     }
-    
+
     // wipe update
     wipe_EndScreen(0, 0, SCREENWIDTH, SCREENHEIGHT);
 
-    wipestart = I_GetTime () - 1;
+    wipestart = I_GetTime() - 1;
 
     do
     {
-	do
-	{
-	    nowtime = I_GetTime ();
-	    tics = nowtime - wipestart;
-	} while (!tics);
-	wipestart = nowtime;
-	done = wipe_ScreenWipe(wipe_Melt
-			       , 0, 0, SCREENWIDTH, SCREENHEIGHT, tics);
-	I_UpdateNoBlit ();
-	M_Drawer ();                            // menu is drawn even on top of wipes
-	I_FinishUpdate ();                      // page flip or blit buffer
+        do
+        {
+            nowtime = I_GetTime();
+            tics = nowtime - wipestart;
+        } while (tics < 3); // haleyjd 08/23/2010: [STRIFE] Changed from == 0 to < 3
+
+        // haleyjd 08/26/10: [STRIFE] Changed to use ColorXForm wipe.
+        wipestart = nowtime;
+        done = wipe_ScreenWipe(wipe_ColorXForm,
+                               0, 0, SCREENWIDTH, SCREENHEIGHT, tics);
+        I_UpdateNoBlit();
+        M_Drawer(); // menu is drawn even on top of wipes
+        I_FinishUpdate();   // page flip or blit buffer
     } while (!done);
 }
 
@@ -337,50 +405,56 @@ void D_Display (void)
 //
 //  D_DoomLoop
 //
-extern  boolean         demorecording;
+//  haleyjd 08/23/10: [STRIFE] Verified unmodified.
+//
+extern  boolean             demorecording;
 
-void D_DoomLoop (void)
+void D_DoomLoop(void)
 {
     if (demorecording)
-	G_BeginRecording ();
-		
-    if (M_CheckParm ("-debugfile"))
     {
-	char    filename[20];
-	sprintf (filename,"debug%i.txt",consoleplayer);
-	printf ("debug output to: %s\n",filename);
-	debugfile = fopen (filename,"w");
+        G_BeginRecording();
     }
-	
-    I_InitGraphics ();
+
+    if (M_CheckParm("-debugfile"))
+    {
+        char    filename[20];
+        sprintf(filename, "debug%i.txt", consoleplayer);
+        printf("debug output to: %s\n", filename);
+        debugfile = fopen(filename, "w");
+    }
+
+    I_InitGraphics();
 
     while (1)
     {
-	// frame syncronous IO operations
-	I_StartFrame ();                
-	
-	// process one or more tics
-	if (singletics)
-	{
-	    I_StartTic ();
-	    D_ProcessEvents ();
-	    G_BuildTiccmd (&netcmds[consoleplayer][maketic%BACKUPTICS]);
-	    if (advancedemo)
-		D_DoAdvanceDemo ();
-	    M_Ticker ();
-	    G_Ticker ();
-	    gametic++;
-	    maketic++;
-	}
-	else
-	{
-	    TryRunTics (); // will run at least one tic
-	}
-		
-	S_UpdateSounds (players[consoleplayer].mo);// move positional sounds
+        // frame syncronous IO operations
+        I_StartFrame();
 
-	// Update display, next frame, with current state.
-	D_Display ();
+        // process one or more tics
+        if (singletics)
+        {
+            I_StartTic();
+            D_ProcessEvents();
+            G_BuildTiccmd(&netcmds[consoleplayer][maketic % BACKUPTICS]);
+            if (advancedemo)
+            {
+                D_DoAdvanceDemo();
+            }
+            M_Ticker();
+            G_Ticker();
+            gametic++;
+            maketic++;
+        }
+        else
+        {
+            TryRunTics();   // will run at least one tic
+        }
+
+        S_UpdateSounds(players[consoleplayer].mo);  // move positional sounds
+
+        // Update display, next frame, with current state.
+        D_Display();
     }
 }
 
@@ -391,17 +465,21 @@ void D_DoomLoop (void)
 //
 int             demosequence;
 int             pagetic;
-char                    *pagename;
+char            *pagename;
 
 
 //
 // D_PageTicker
 // Handles timing for warped projection
 //
-void D_PageTicker (void)
+// haleyjd 08/22/2010: [STRIFE] verified unmodified
+//
+void D_PageTicker(void)
 {
     if (--pagetic < 0)
-	D_AdvanceDemo ();
+    {
+        D_AdvanceDemo();
+    }
 }
 
 
@@ -409,9 +487,11 @@ void D_PageTicker (void)
 //
 // D_PageDrawer
 //
-void D_PageDrawer (void)
+// haleyjd 08/22/2010: [STRIFE] verified unmodified
+//
+void D_PageDrawer(void)
 {
-    V_DrawPatch (0,0, 0, W_CacheLumpName(pagename, PU_CACHE));
+    V_DrawPatch(0, 0, 0, W_CacheLumpName(pagename, PU_CACHE));
 }
 
 
@@ -419,7 +499,7 @@ void D_PageDrawer (void)
 // D_AdvanceDemo
 // Called after each demo or intro demosequence finishes
 //
-void D_AdvanceDemo (void)
+void D_AdvanceDemo(void)
 {
     advancedemo = true;
 }
@@ -429,58 +509,129 @@ void D_AdvanceDemo (void)
 // This cycles through the demo sequences.
 // FIXME - version dependend demo numbers?
 //
- void D_DoAdvanceDemo (void)
+// [STRIFE] Modified for the opening slideshow and the exit screen
+//
+void D_DoAdvanceDemo(void)
 {
     players[consoleplayer].playerstate = PST_LIVE;  // not reborn
     advancedemo = false;
-    usergame = false;               // no save / end game here
+    usergame = false;   // no save / end game here
     paused = false;
     gameaction = ga_nothing;
 
-    demosequence = (demosequence+1)%6;
-    
+    // villsa 09/12/10: [STRIFE] converted pagetics to ticrate
     switch (demosequence)
     {
-      case 0:
-	if (commercial)
-	    pagetic = 35 * 11;
-	else
-	    pagetic = 170;
-	gamestate = GS_DEMOSCREEN;
-	pagename = "TITLEPIC";
-	if (commercial)
-	  S_StartMusic(mus_dm2ttl);
-	else
-	  S_StartMusic (mus_intro);
-	break;
-      case 1:
-	G_DeferedPlayDemo ("demo1");
-	break;
-      case 2:
-	pagetic = 200;
-	gamestate = GS_DEMOSCREEN;
-	pagename = "CREDIT";
-	break;
-      case 3:
-	G_DeferedPlayDemo ("demo2");
-	break;
-      case 4:
-	gamestate = GS_DEMOSCREEN;
-	if (commercial)
-	{
-	    pagetic = 35 * 11;
-	    pagename = "TITLEPIC";
-	    S_StartMusic(mus_dm2ttl);
-	}
-	else
-	{
-	    pagetic = 200;
-	    pagename = "HELP2";
-	}
-	break;
-      case 5:
-	G_DeferedPlayDemo ("demo3");
-	break;
+    case -5:    // exit the game
+        I_Quit();
+        return;
+    case -4:    // show exit screen
+        menuactive = false;
+        pagetic = 3 * TICRATE;
+        gamestate = GS_DEMOSCREEN;
+        pagename = "PANEL7";
+        S_StartMusic(mus_fast);
+        if (isdemoversion)
+            demosequence = -3;  // show Velocity logo
+        else
+            demosequence = -5;  // exit
+        return;
+    case -3:    // show Velocity logo for demo version
+        pagetic = 6 * TICRATE;
+        gamestate = GS_DEMOSCREEN;
+        pagename = "vellogo";
+        demosequence = -5;  // exit
+        return;
+    case -2:    // title screen
+        pagetic = 6 * TICRATE;
+        gamestate = GS_DEMOSCREEN;
+        pagename = "TITLEPIC";
+        S_StartMusic(mus_logo);
+        demosequence = -1;  // start intro cinematic
+    case -1:    // start of intro cinematic
+        pagetic = 10;
+        gamestate = GS_DEMOSCREEN;
+        pagename = "PANEL0";
+        S_StartSound(NULL, sfx_rb2act);
+        wipegamestate = -1;
+        break;
+    case 0: // Rogue logo
+        pagetic = 4 * TICRATE;
+        gamestate = GS_DEMOSCREEN;
+        pagename = "RGELOGO";
+        wipegamestate = -1;
+        break;
+    case 1:
+        pagetic = 7 * TICRATE;      // The comet struck our planet without
+        gamestate = GS_DEMOSCREEN;  // warning.We lost our paradise in a 
+        pagename = "PANEL1";        // single, violent stroke.
+        I_StartVoice("pro1");
+        S_StartMusic(mus_intro);
+        break;
+    case 2:
+        pagetic = 9 * TICRATE;      // The impact released a virus which 
+        gamestate = GS_DEMOSCREEN;  // swept through the land and killed 
+        pagename = "PANEL2";        // millions. They turned out to be 
+        I_StartVoice("pro2");       // the lucky ones...
+        break;
+    case 3:
+        pagetic = 12 * TICRATE;     // For those that did not die became 
+        gamestate = GS_DEMOSCREEN;  // mutations of humanity. Some became
+        pagename = "PANEL3";        // fanatics who heard the voice of a
+        I_StartVoice("pro3");       // malignant God in their heads, and 
+        break;                      // called themselves the Order.
+    case 4:
+        pagetic = 11 * TICRATE;     // Those of us who were deaf to this
+        pagename = "PANEL4";        // voice suffer horribly and are 
+        gamestate = GS_DEMOSCREEN;  // forced to serve these ruthless
+        I_StartVoice("pro4");       // psychotics, who wield weapons more
+        break;                      // powerful than anything we can muster.
+    case 5:
+        pagetic = 10 * TICRATE;     // They destroy our women and children,
+        gamestate = GS_DEMOSCREEN;  // so that we must hide them underground,
+        pagename = "PANEL5";        // and live like animals in constant
+        I_StartVoice("pro5");       // fear for our lives.
+        break;
+    case 6:                         // But there are whispers of discontent.
+        pagetic = 16 * TICRATE;     // If we organize, can we defeat our
+        gamestate = GS_DEMOSCREEN;  // masters? Weapons are being stolen,
+        pagename = "PANEL6";        // soldiers are being trained. A 
+        I_StartVoice("pro6");       // Movement is born! Born of lifelong 
+        break;                      // STRIFE!
+    case 7: // titlepic again - unused...
+        pagetic = 9 * TICRATE;
+        gamestate = GS_DEMOSCREEN;
+        pagename = "TITLEPIC";
+        wipegamestate = -1;
+        break;
+    case 8: // demo
+        ClearTmp();
+        pagetic = 9 * TICRATE;
+        G_DeferedPlayDemo("demo1");
+        break;
+    case 9: // velocity logo? - unused...
+        pagetic = 6 * TICRATE;
+        gamestate = GS_DEMOSCREEN;
+        pagename = "vellogo";
+        wipegamestate = -1;
+        break;
+    case 10: // credits
+        gamestate = GS_DEMOSCREEN;
+        pagetic = 12 * TICRATE;
+        pagename = "CREDIT";
+        wipegamestate = -1;
+        break;
+    }
+
+    ++demosequence;
+
+    if (demosequence > 11)
+    {
+        demosequence = -2;
+    }
+    if (demosequence == 7 || demosequence == 9)
+    {
+        ++demosequence;
     }
 }
 
@@ -489,25 +640,57 @@ void D_AdvanceDemo (void)
 //
 // D_StartTitle
 //
-void D_StartTitle (void)
+// [STRIFE]
+// haleyjd 09/11/10: Small modifications for new demo sequence.
+//
+void D_StartTitle(void)
 {
+    gamestate = GS_DEMOSCREEN;
     gameaction = ga_nothing;
     demosequence = -1;
-    D_AdvanceDemo ();
+    D_AdvanceDemo();
 }
+
+//
+// D_QuitGame
+//
+// [STRIFE] New function
+// haleyjd 09/11/10: Sets up the quit game snippet powered by the
+// demo sequence.
+//
+void D_QuitGame(void)
+{
+    gameaction = ga_nothing;
+    demosequence = -4;
+    D_AdvanceDemo();
+}
+
+
+//
+// STRIFE Graphical Intro Sequence
+//
+
+#define MAXINTROPROGRESS 69
+
+int introprogress;  // track the progress of the intro
+
+byte *rawgfx_startup0;  // raw linear gfx for intro
+byte *rawgfx_startp[4];
+byte *rawgfx_startlz[2];
+byte *rawgfx_startbot;
 
 //
 // D_GetCursorColumn
 //
 int D_GetCursorColumn(void)
 {
-	union REGS regs;
+    union REGS regs;
 
-	regs.h.ah = 3;
-	regs.h.bh = 0;
-	int386(0x10, &regs, &regs);
+    regs.h.ah = 3;
+    regs.h.bh = 0;
+    int386(0x10, &regs, &regs);
 
-	return regs.h.dl;
+    return regs.h.dl;
 }
 
 //
@@ -515,13 +698,13 @@ int D_GetCursorColumn(void)
 //
 int D_GetCursorRow(void)
 {
-	union REGS regs;
+    union REGS regs;
 
-	regs.h.ah = 3;
-	regs.h.bh = 0;
-	int386(0x10, &regs, &regs);
+    regs.h.ah = 3;
+    regs.h.bh = 0;
+    int386(0x10, &regs, &regs);
 
-	return regs.h.dh;
+    return regs.h.dh;
 }
 
 //
@@ -529,13 +712,13 @@ int D_GetCursorRow(void)
 //
 void D_SetCursorPosition(int column, int row)
 {
-	union REGS regs;
+    union REGS regs;
 
-	regs.h.ah = 2;
-	regs.h.bh = 0;
-	regs.h.dl = column;
-	regs.h.dh = row;
-	int386(0x10, &regs, &regs);
+    regs.h.ah = 2;
+    regs.h.bh = 0;
+    regs.h.dl = column;
+    regs.h.dh = row;
+    int386(0x10, &regs, &regs);
 }
 
 //
@@ -543,79 +726,284 @@ void D_SetCursorPosition(int column, int row)
 //
 void D_DrawTitle(char *string, int bc, int tc)
 {
-	int color;
-	int column;
-	int row;
-	int i;
-	union REGS regs;
+    int color;
+    int column;
+    int row;
+    int i;
+    union REGS regs;
 
-	//Calculate text color
-	color = (tc << 4) | bc;
+    // Calculate text color
+    color = (tc << 4) | bc;
 
-	//Get column position
-	column = D_GetCursorColumn();
+    // Get column position
+    column = D_GetCursorColumn();
 
-	//Get row position
-	row = D_GetCursorRow();
+    // Get row position
+    row = D_GetCursorRow();
 
-	for (i = 0; i < strlen(string); i++)
-	{
-		//Set character
-		regs.h.al = string[i];
-		regs.h.ah = 9;
-		regs.h.bl = color;
-		regs.h.bh = 0;
-		regs.w.cx = 1;
-		int386(0x10, &regs, &regs);
+    for (i = 0; i < strlen(string); i++)
+    {
+        // Set character
+        regs.h.al = string[i];
+        regs.h.ah = 9;
+        regs.h.bl = color;
+        regs.h.bh = 0;
+        regs.w.cx = 1;
+        int386(0x10, &regs, &regs);
 
-		//Check cursor position
-		if (++column >= 80)
-			column = 0;
+        // Check cursor position
+        if (++column >= 80)
+            column = 0;
 
-		//Set postition
-		D_SetCursorPosition(column, row);
-	}
+        // Set postition
+        D_SetCursorPosition(column, row);
+    }
 }
 
-//      print title for every printed line
-char            title[128];
+// print title for every printed line
+char    title[128] = "Conversation ON";
 
 //
-// D_RedrawTitle
+// D_DrawText
 //
-void D_RedrawTitle(void)
+void D_DrawText(char *string)
 {
-	int column;
-	int row;
+    int column;
+    int row;
 
-	//Get current cursor pos
-	column = D_GetCursorColumn();
-	row = D_GetCursorRow();
+    if (devparm)
+    {
+        // Get current cursor pos
+        column = D_GetCursorColumn();
+        row = D_GetCursorRow();
 
-	//Set cursor pos to zero
-	D_SetCursorPosition(0, 0);
+        // Set cursor pos to zero
+        D_SetCursorPosition(0, 0);
 
-	//Draw title
-	D_DrawTitle(title, BGCOLOR, FGCOLOR);
+        // Draw title
+        D_DrawTitle(title, BGCOLOR, FGCOLOR);
 
-	//Set old cursor pos
-	D_SetCursorPosition(column, row);
+        // Set old cursor pos
+        D_SetCursorPosition(column, row);
+
+        // Print string
+        printf(string);
+    }
+    else
+    {
+        D_InitIntroSequence();
+        D_DrawIntroSequence();
+        if (!showintro)
+        {
+            // Set cursor pos to zero
+            D_SetCursorPosition(0, 0);
+
+            // Draw title
+            D_DrawTitle(title, BGCOLOR, FGCOLOR);
+        }
+    }
+}
+
+
+//
+// D_InitIntroSequence
+//
+// [STRIFE] New function
+// haleyjd 20110206: Initialize the graphical introduction sequence
+//
+void D_InitIntroSequence(void)
+{
+    char string[80];
+    if (showintro)
+    {
+        // Load all graphics
+        rawgfx_startup0 = W_CacheLumpName("STARTUP0", PU_STATIC);
+        rawgfx_startp[0] = W_CacheLumpName("STRTPA1", PU_STATIC);
+        rawgfx_startp[1] = W_CacheLumpName("STRTPB1", PU_STATIC);
+        rawgfx_startp[2] = W_CacheLumpName("STRTPC1", PU_STATIC);
+        rawgfx_startp[3] = W_CacheLumpName("STRTPD1", PU_STATIC);
+        rawgfx_startlz[0] = W_CacheLumpName("STRTLZ1", PU_STATIC);
+        rawgfx_startlz[1] = W_CacheLumpName("STRTLZ2", PU_STATIC);
+        rawgfx_startbot = W_CacheLumpName("STRTBOT", PU_STATIC);
+
+        // Fill the background entirely
+        memset(0xa0000, 0xf0, 320 * 200);
+
+        // Draw a 95-pixel rect from STARTUP0 starting at y=57 to (0,41) on the
+        // screen
+        memcpy(0xa0000 + 320 * 41, rawgfx_startup0 + 320 * 57,
+               320 * 95);
+    }
+    else
+    {
+        // Fill the background entirely
+        memset(0xb8000, 0, 80 * 25 * 2);
+
+        // Draw title
+        D_SetCursorPosition(0, 0);
+        D_DrawTitle(title, BGCOLOR, FGCOLOR);
+
+        sprintf(string, "Rogue Entertainment");
+        D_SetCursorPosition(40 - strlen(string) / 2, 5);
+        D_DrawTitle(string, BGCOLOR2, FGCOLOR2);
+
+        sprintf(string, "and");
+        D_SetCursorPosition(40 - strlen(string) / 2, 7);
+        D_DrawTitle(string, BGCOLOR2, FGCOLOR2);
+
+        sprintf(string, "Velocity Games");
+        D_SetCursorPosition(40 - strlen(string) / 2, 9);
+        D_DrawTitle(string, BGCOLOR2, FGCOLOR2);
+
+        sprintf(string, "present");
+        D_SetCursorPosition(40 - strlen(string) / 2, 11);
+        D_DrawTitle(string, BGCOLOR2, FGCOLOR2);
+
+        sprintf(string, "S T R I F E");
+        D_SetCursorPosition(40 - strlen(string) / 2, 14);
+        D_DrawTitle(string, BGCOLOR2, FGCOLOR2);
+
+        sprintf(string, "Loading...");
+        D_SetCursorPosition(40 - strlen(string) / 2, 17);
+        D_DrawTitle(string, BGCOLOR2, FGCOLOR2);
+
+        sprintf(string, "[                                                  ]");
+        D_SetCursorPosition(14, 18);
+        D_DrawTitle(string, BGCOLOR2, FGCOLOR2);
+    }
+}
+
+//
+// D_DrawIntroSequence
+//
+// [STRIFE] New function
+// haleyjd 20110206: Refresh the intro sequence
+//
+void D_DrawIntroSequence(void)
+{
+    int laserpos;
+    int robotpos;
+    int i;
+    byte *screen;
+
+    if (showintro)
+    {
+        // Laser position
+        laserpos = (200 * introprogress / MAXINTROPROGRESS) + 60;
+
+        // BUG: (?) Due to this clip, the laser never even comes close to
+        // touching the peasant; confirmed with vanilla. This MAY have been
+        // intentional, for effect, however, since no death frames are shown 
+        // either... kind of a black-out death.
+        if (laserpos > 200)
+        {
+            laserpos = 200;
+        }
+
+        // Draw the laser
+        // Blitted 16 bytes for 16 rows starting at 705280 + laserpos
+        // (705280 - 0xA0000) / 320 == 156
+        for (i = 0, screen = 0xa0000 + 320 * 156 + 60; i < 16; i++)
+        {
+            memset(screen, 0xf0, 200);
+        }
+
+        for (i = 0, screen = 0xa0000 + 320 * 156 + laserpos; i < 16;
+             i++, screen += 320)
+        {
+            memcpy(screen, rawgfx_startlz[laserpos % 2] + 16 * i, 16);
+        }
+
+
+        if (laserpos > 10)
+        {
+            // Robot position
+            robotpos = laserpos % 5 - 2;
+
+            // Draw the robot
+            // Blitted 48 bytes for 48 rows starting at 699534 + (320*robotpos)
+            // 699534 - 0xA0000 == 44174, which % 320 == 14, / 320 == 138
+            for (i = 0, screen = 0xa0000 + 320 * 138 + 14; i < robotpos;
+                 i++, screen += 320)
+            {
+                memset(screen, 0xf0, 48);
+            }
+
+            for (i = 0; i < 48; i++, screen += 320)
+            {
+                memcpy(screen, rawgfx_startbot, 48);
+            }
+
+            for (i = 0; i < 5 - robotpos; i++, screen += 320)
+            {
+                memset(screen, 0xf0, 48);
+            }
+
+            // Draw the peasant
+            // Blitted 32 bytes for 64 rows starting at 699142
+            // 699142 - 0xA0000 == 43782, which % 320 == 262, / 320 == 136
+            for (i = 0; screen = 0xa0000 + 320 * 136 + 262; i < 64;
+                 i++, screen += 320)
+            {
+                memcpy(screen, rawgfx_startp[laserpos % 4], 32);
+            }
+        }
+    }
+    else
+    {
+        // Laser position
+        laserpos = 50 * introprogress / MAXINTROPROGRESS;
+
+        if (laserpos > 50)
+        {
+            laserpos = 50;
+        }
+
+        for (i = 0; i < laserpos; i++)
+        {
+            D_SetCursorPosition(15 + i, 18);
+            D_DrawTitle("#", BGCOLOR2, FGCOLOR2);
+        }
+    }
+}
+
+//
+// D_IntroTick
+//
+// Advance the intro sequence
+//
+void D_IntroTick(void)
+{
+    if (devparm)
+    {
+        return;
+    }
+
+    ++introprogress;
+    if (introprogress >= MAXINTROPROGRESS)
+    {
+        S_StartSound(NULL, sfx_psdtha);
+    }
+    else
+    {
+        D_DrawIntroSequence();
+    }
 }
 
 //
 // D_AddFile
 //
-void D_AddFile (char *file)
+void D_AddFile(char *file)
 {
     int     numwadfiles;
     char    *newfile;
-	
-    for (numwadfiles = 0 ; wadfiles[numwadfiles] ; numwadfiles++)
-	;
 
-    newfile = malloc (strlen(file)+1);
-    strcpy (newfile, file);
-	
+    for (numwadfiles = 0; wadfiles[numwadfiles]; numwadfiles++)
+        ;
+
+    newfile = malloc(strlen(file) + 1);
+    strcpy(newfile, file);
+
     wadfiles[numwadfiles] = newfile;
 }
 
@@ -625,82 +1013,73 @@ void D_AddFile (char *file)
 // to determine whether registered/commercial features
 // should be executed (notably loading PWAD's).
 //
-void IdentifyVersion (void)
+void IdentifyVersion(void)
 {
+    strcpy(basedefault, "strife.cfg");
 
-	strcpy(basedefault, "default.cfg");
-    if (M_CheckParm ("-shdev"))
+    if (!access("strife1.wad", R_OK))
     {
-	registered = false;
-	shareware = true;
-	devparm = true;
-	D_AddFile (DEVDATA"doom1.wad");
-	D_AddFile (DEVMAPS"data_se/texture1.lmp");
-	D_AddFile (DEVMAPS"data_se/pnames.lmp");
-	strcpy (basedefault,DEVDATA"default.cfg");
-	return;
+        isregistered = true;
+        if (access("voices.wad", R_OK) != 0 || disable_voices)
+        {
+            disable_voices = true;
+            if (devparm)
+            {
+                printf("Voices disabled\n");
+            }
+        }
+        else
+        {
+            D_AddFile("voices.wad");
+        }
+        D_AddFile("strife1.wad");
+        return;
     }
 
-    if (M_CheckParm ("-regdev"))
+    if (!access("strife0.wad", R_OK))
     {
-	registered = true;
-	devparm = true;
-	D_AddFile (DEVDATA"doom.wad");
-	D_AddFile (DEVMAPS"data_se/texture1.lmp");
-	D_AddFile (DEVMAPS"data_se/texture2.lmp");
-	D_AddFile (DEVMAPS"data_se/pnames.lmp");
-	strcpy (basedefault,DEVDATA"default.cfg");
-	return;
-    }
-
-    if (M_CheckParm ("-comdev"))
-    {
-	commercial = true;
-	devparm = true;
-	D_AddFile (DEVDATA"doom2.wad");
-	D_AddFile (DEVMAPS"cdata/texture1.lmp");
-	D_AddFile (DEVMAPS"cdata/pnames.lmp");
-	strcpy (basedefault,DEVDATA"default.cfg");
-	return;
-    }
-
-    if ( !access ("doom2f.wad",R_OK) )
-    {
-	commercial = true;
-	// C'est ridicule!
-	// Let's handle languages in config files, okay?
-	french = true;
-	printf("French version\n");
-	D_AddFile("doom2f.wad");
-	return;
-    }
-
-    if ( !access ("doom2.wad",R_OK) )
-    {
-	commercial = true;
-	D_AddFile("doom2.wad");
-	return;
-    }
-
-	if (!access("doom.wad", R_OK))
-    {
-    registered = true;
-	D_AddFile("doom.wad");
-    return;
-    }
-
-	if (!access("doom1.wad", R_OK))
-    {
-    shareware = true;
-	D_AddFile("doom1.wad");
-    return;
+        isdemoversion = true;
+        D_AddFile("strife0.wad");
+        return;
     }
 
     printf("Game mode indeterminate.\n");
+}
 
-    // We don't abort. Let's see what the PWAD contains.
-    //exit(1);
-    //I_Error ("Game mode indeterminate\n");
+//
+// DoTimeBomb
+//
+// haleyjd 08/23/2010: [STRIFE] New function
+// Code with no xrefs; probably left over from a private alpha or beta.
+// Translated here because it explains what the SERIAL lump was meant to do.
+//
+void DoTimeBomb(void)
+{
+    dosdate_t date;
+    char *serial;
+    int serialnum;
+    int serial_year;
+    int serial_month;
+
+    serial = W_CacheLumpName("serial", PU_CACHE);
+    serialnum = atoi(serial);
+
+    // Rogue, much like Governor Mourel, were lousy liars. These deceptive
+    // error messages are pretty low :P
+    dos_getdate(&date);
+    if (date.year > 1996 || date.day > 15 && date.month > 4)
+    {
+        I_Error("Data error! Corrupted WAD File!");
+    }
+
+    serial_year = serialnum / 10000;
+    serial_month = serialnum / 100 - 100 * serial_year;
+    if (date.year < serial_year ||
+        date.day < serialnum - 100 * serial_month - 10000 * serial_year &&
+        date.month < serial_month)
+    {
+        I_Error("Bad wadfile");
+    }
 }
 
 //
@@ -782,76 +1161,108 @@ void FindResponseFile (void)
 //
 void D_DoomMain (void)
 {
-    int             p;
-	char                    file[256];
+    int p;
+	char    file[256];
 	union REGS regs;
+    int i;
+    int serial;
 
     FindResponseFile ();
-	
-    IdentifyVersion ();
-	
-    setbuf (stdout, NULL);
-    modifiedgame = false;
-	
-    nomonsters = M_CheckParm ("-nomonsters");
-    respawnparm = M_CheckParm ("-respawn");
-    fastparm = M_CheckParm ("-fast");
-    devparm = M_CheckParm ("-devparm");
-    if (M_CheckParm ("-altdeath"))
-	deathmatch = 2;
-    else if (M_CheckParm ("-deathmatch"))
-	deathmatch = 1;
 
-	if (commercial)
-	sprintf (title,
-		 "                          "
-		 "DOOM 2: Hell on Earth v%i.%i"
-		 "                           ",
-		 VERSION/100,VERSION%100);
-	else
-	sprintf (title,
-		 "                          "
-		 "DOOM System Startup v%i.%i"
-		 "                          ",
-		 VERSION/100,VERSION%100);
+    if (M_CheckParm("-nograph"))
+    {
+        showintro = true;
+    }
 
-	regs.w.ax = 3;
-	int386(0x10, &regs, &regs);
-	D_DrawTitle(title, BGCOLOR, FGCOLOR);
-
-	printf("\nP_Init: Checking cmd-line parameters...\n");
-
-    if (devparm)
-	{
-	printf(D_DEVSTR);
-	D_RedrawTitle();
-	}
-    
     if (M_CheckParm("-cdrom"))
     {
-	printf(D_CDROM);
-	mkdir("c:\\doomdata");
-	strcpy (basedefault,"c:/doomdata/default.cfg");
-    }	
+        printf(D_CDROM);
+        mkdir("c:\\strife.cd");
+        strcpy(basedefault, "c:\\strife.cd\\strife.cfg");
+
+        for (i = 0; i < 8; i++)
+        {
+            sprintf(file, "c:\\strife.cd\\strfsav%d.ssg", i);
+            mkdir(file);
+        }
+    }
+    else
+    {
+        for (i = 0; i < 6; i++)
+        {
+            sprintf(file, "strfsav%d.ssg", i);
+            mkdir(file);
+        }
+    }
+
+    devparm = M_CheckParm("-devparm");
+
+    if (devparm)
+    {
+        showintro = false;
+    }
+
+    IdentifyVersion();
+
+    setbuf(stdout, NULL);
+
+    modifiedgame = false;
+
+    nomonsters = M_CheckParm("-nomonsters") != 0;
+    workparm = M_CheckParm("-work");
+    flipparm = M_CheckParm("-flip");
+    respawnparm = M_CheckParm("-respawn") != 0;
+    randomparm = M_CheckParm("-random") != 0;
+    fastparm = M_CheckParm("-fast");
+
+    if (M_CheckParm("-altdeath"))
+    {
+        deathmatch = 2;
+    }
+    else if (M_CheckParm("-net"))
+    {
+        deathmatch = 1;
+    }
+
+
+    sprintf(title, "                      "
+                   "STRIFE:  Quest for the Sigil v1.31"
+                   "                                 ");
+
+    printf(title);
+
+    if (devparm)
+    {
+        printf(D_DEVSTR);
+    }
     
     // turbo option
-    if ( (p=M_CheckParm ("-turbo")) )
+    if ((p = M_CheckParm("-turbo")))
     {
-	int     scale = 200;
-	extern int forwardmove[2];
-	extern int sidemove[2];
-	
-	if (p<myargc-1)
-	    scale = atoi (myargv[p+1]);
-	if (scale < 10)
-	    scale = 10;
-	if (scale > 400)
-	    scale = 400;
-	printf ("turbo scale: %i%%\n",scale);
-	forwardmove[0] = forwardmove[0]*scale/100;
-	forwardmove[1] = forwardmove[1]*scale/100;
-	sidemove[0] = sidemove[0]*scale/100;
-	sidemove[1] = sidemove[1]*scale/100;
+        int scale = 200;
+        extern int forwardmove[2];
+        extern int sidemove[2];
+
+        if (p < myargc - 1)
+        {
+            scale = atoi(myargv[p + 1]);
+        }
+        if (scale < 10)
+        {
+            scale = 10;
+        }
+        if (scale > 400)
+        {
+            scale = 400;
+        }
+        if (devparm)
+        {
+            printf("turbo scale: %i%%\n", scale);
+        }
+        forwardmove[0] = forwardmove[0] * scale / 100;
+        forwardmove[1] = forwardmove[1] * scale / 100;
+        sidemove[0] = sidemove[0] * scale / 100;
+        sidemove[1] = sidemove[1] * scale / 100;
     }
     
     // add any files specified on the command line with -file wadfile
@@ -859,275 +1270,335 @@ void D_DoomMain (void)
     //
     // convenience hack to allow -wart e m to add a wad file
     // prepend a tilde to the filename so wadfile will be reloadable
-    p = M_CheckParm ("-wart");
+    p = M_CheckParm("-wart");
     if (p)
     {
-	myargv[p][4] = 'p';     // big hack, change to -warp
+        myargv[p][4] = 'p';     // big hack, change to -warp
 
-	// Map name handling.
+                                // Map name handling.
 
-	if (commercial)
-	{
-	p = atoi (myargv[p+1]);
-	if (p<10)
-	    sprintf (file,"~"DEVMAPS"cdata/map0%i.wad", p);
-	else
-	    sprintf (file,"~"DEVMAPS"cdata/map%i.wad", p);
-	}
-	else
-	{
-	sprintf (file,"~"DEVMAPS"E%cM%c.wad",
-		    myargv[p+1][0], myargv[p+2][0]);
-	printf("Warping to Episode %s, Map %s.\n",
-		myargv[p+1],myargv[p+2]);
+        p = atoi(myargv[p + 1]);
+        if (p<10)
+            sprintf(file, "~"DEVMAPS"data/map0%i.wad", p);
+        else
+            sprintf(file, "~"DEVMAPS"data/map%i.wad", p);
+
+        D_AddFile(file);
     }
-	D_AddFile (file);
-	}
-    p = M_CheckParm ("-file");
+    p = M_CheckParm("-file");
     if (p)
     {
-	// the parms after p are wadfile/lump names,
-	// until end of parms or another - preceded parm
-	modifiedgame = true;            // homebrew levels
-	while (++p != myargc && myargv[p][0] != '-')
-	    D_AddFile (myargv[p]);
+        // the parms after p are wadfile/lump names,
+        // until end of parms or another - preceded parm
+        modifiedgame = true;            // homebrew levels
+        while (++p != myargc && myargv[p][0] != '-')
+            D_AddFile(myargv[p]);
     }
 
-    p = M_CheckParm ("-playdemo");
+    p = M_CheckParm("-playdemo");
 
     if (!p)
-	p = M_CheckParm ("-timedemo");
-
-    if (p && p < myargc-1)
     {
-	sprintf (file,"%s.lmp", myargv[p+1]);
-	D_AddFile (file);
-	printf("Playing demo %s.lmp.\n",myargv[p+1]);
+        p = M_CheckParm("-timedemo");
+    }
+
+    if (p && p < myargc - 1)
+    {
+        sprintf(file, "%s.lmp", myargv[p + 1]);
+        D_AddFile(file);
+        if (devparm)
+        {
+            printf("Playing demo %s.lmp.\n", myargv[p + 1]);
+        }
     }
     
     // get skill / episode / map from parms
     startskill = sk_medium;
-    startepisode = 1;
-    startmap = 1;
-    autostart = false;
-
-		
-    p = M_CheckParm ("-skill");
-    if (p && p < myargc-1)
+    if (isdemoversion)
     {
-	startskill = myargv[p+1][0]-'1';
-	autostart = true;
+        startmap = 33;
+    }
+    else
+    {
+        startmap = 2;
     }
 
-    p = M_CheckParm ("-episode");
-    if (p && p < myargc-1)
+    p = M_CheckParm("-skill");
+    if (p && p < myargc - 1)
     {
-	startepisode = myargv[p+1][0]-'0';
-	startmap = 1;
-	autostart = true;
+        startskill = myargv[p + 1][0] - '1';
+        autostart = true;
     }
 	
-    p = M_CheckParm ("-timer");
-    if (p && p < myargc-1 && deathmatch)
+    p = M_CheckParm("-timer");
+    if (p && p < myargc - 1 && deathmatch)
     {
-	int     time;
-	time = atoi(myargv[p+1]);
-	printf("Levels will end after %d minute",time);
-	if (time>1)
-	    printf("s");
-	printf(".\n");
+        int     time;
+        time = atoi(myargv[p + 1]);
+        if (devparm)
+        {
+            printf("Levels will end after %d minute", time);
+        }
+        if (time > 1)
+        {
+            printf("s");
+        }
+        if (devparm)
+        {
+            printf(".\n");
+        }
     }
 
-    p = M_CheckParm ("-avg");
-    if (p && p < myargc-1 && deathmatch)
-	printf("Austin Virtual Gaming: Levels will end after 20 minutes\n");
-
-    p = M_CheckParm ("-warp");
-    if (p && p < myargc-1)
+    p = M_CheckParm("-avg");
+    if (p && p < myargc - 1 && deathmatch && devparm)
     {
-	if (commercial)
-	    startmap = atoi (myargv[p+1]);
-	else
-	{
-	    startepisode = myargv[p+1][0]-'0';
-	    startmap = myargv[p+2][0]-'0';
-	}
-	autostart = true;
+        printf("Austin Virtual Gaming: Levels will end after 20 minutes\n");
+    }
+
+    p = M_CheckParm("-warp");
+    if (p && p < myargc - 1)
+    {
+        startmap = atoi(myargv[p + 1]);
+        if (isdemoversion)
+        {
+            if (startmap < 32)
+            {
+                startmap = startmap + 31;
+                if (startmap > 34)
+                {
+                    startmap = 34;
+                }
+            }
+        }
+        autostart = true;
     }
     
     // init subsystems
-    printf ("V_Init: allocate screens.\n");
-    V_Init ();
+    V_Init();
 
-    printf ("M_LoadDefaults: Load system defaults.\n");
-    M_LoadDefaults ();              // load before initing other systems
+    M_LoadDefaults();              // load before initing other systems
 
-    printf ("Z_Init: Init zone memory allocation daemon. \n");
-    Z_Init ();
+    Z_Init();
 
-    printf ("W_Init: Init WADfiles.\n");
-    W_InitMultipleFiles (wadfiles);
+    printf("W_Init: Init WADfiles.\n");
+    W_InitMultipleFiles(wadfiles);
+
+    if (!devparm)
+    {
+        if (showintro)
+        {
+            regs.h.al = 0x13;
+            regs.h.ah = 0;
+            int386(0x10, &regs, &regs);
+            I_SetPalette(W_CacheLumpName("PLAYPAL", PU_CACHE));
+        }
+        D_InitIntroSequence();
+    }
+
+    D_IntroTick();
+
+    serial = atoi(W_CacheLumpName("serial", PU_CACHE));
     
+    if (devparm)
+    {
+        sprintf(file, "Wad Serial Number: %d:", serial);
+        D_DrawText(file);
+    }
 
     // Check for -file in shareware
     if (modifiedgame)
     {
-	// These are the lumps that will be checked in IWAD,
-	// if any one is not present, execution will be aborted.
-	char name[23][8]=
-	{
-	    "e2m1","e2m2","e2m3","e2m4","e2m5","e2m6","e2m7","e2m8","e2m9",
-	    "e3m1","e3m3","e3m3","e3m4","e3m5","e3m6","e3m7","e3m8","e3m9",
-	    "dphoof","bfgga0","heada1","cybra1","spida1d1"
-	};
-	int i;
-	
-	if (shareware)
-	    I_Error("\nYou cannot -file with the shareware "
-		    "version. Register!");
+        // These are the lumps that will be checked in IWAD,
+        // if any one is not present, execution will be aborted.
+        char name[3][8] =
+        {
+            "map23", "map30", "ROB3E1"
+        };
 
-	// Check for fake IWAD with right name,
-	// but w/o all the lumps of the registered version. 
-	if (registered)
-	    for (i = 0;i < 23; i++)
-		if (W_CheckNumForName(name[i])<0)
-		    I_Error("\nThis is not the registered version.");
+        if (isdemoversion)
+        {
+            I_Error("\nYou cannot -file with the demo version. "
+                "You must buy the real game!");
+        }
+
+        // Check for fake IWAD with right name,
+        // but w/o all the lumps of the registered version. 
+        if (isregistered)
+        {
+            for (i = 0; i < 3; i++)
+            {
+                if (W_CheckNumForName(name[i]) < 0)
+                {
+                    I_Error("\nThis is not the registered version.");
+                }
+            }
+        }
     }
     
     // Iff additonal PWAD files are used, print modified banner
-    if (modifiedgame)
+    if (modifiedgame && devparm)
     {
-	/*m*/printf (
-	    "===========================================================================\n"
-	    "ATTENTION:  This version of DOOM has been modified.  If you would like to\n"
-	    "get a copy of the original game, call 1-800-IDGAMES or see the readme file.\n"
-	    "        You will not receive technical support for modified games.\n"
-	    "                      press enter to continue\n"
-	    "===========================================================================\n"
-	    );
-	getchar ();
+	    D_DrawText("\n"
+	               "===========================================================================\n"
+	               "ATTENTION:  This version of STRIFE has extra files added to it.\n"
+	               "        You will not receive technical support for modified games.\n"
+	               "===========================================================================\n"
+	               );
     }
 	
 
     // Check and print which version is executed.
 
-	if (registered)
-	{
-	printf("	registered version.\n");
-	D_RedrawTitle();
-	printf (
-	    "===========================================================================\n"
-	    "              This version is NOT SHAREWARE, do not distribute!\n"
-	    "         Please report software piracy to the SPA: 1-800-388-PIR8\n"
-	    "===========================================================================\n"
-	);
-	D_RedrawTitle();
-	}
+    if (registered && devparm)
+    {
+        D_DrawText("	retail version.\n");
+        D_DrawText("===========================================================================\n"
+                   "              This version is NOT SHAREWARE, do not distribute!\n"
+                   "         Please report software piracy to the SPA: 1-800-388-PIR8\n"
+                   "===========================================================================\n"
+                   );
+    }
 
-	if (shareware)
-	{
-	printf("	shareware version.\n");
-	D_RedrawTitle();
-	}
+    if (isdemoversion && devparm)
+    {
+        D_DrawText("	demo version.\n");
+    }
 
-	if (commercial)
-	{
-	printf("	commercial version.\n");
-	D_RedrawTitle();
-	printf (
-	    "===========================================================================\n"
-	    "                            Do not distribute!\n"
-	    "         Please report software piracy to the SPA: 1-800-388-PIR8\n"
-	    "===========================================================================\n"
-	);
-	D_RedrawTitle();
-	}
+    D_IntroTick();
 
-    printf ("M_Init: Init miscellaneous info.\n");
-	D_RedrawTitle();
-    M_Init ();
+    if (devparm)
+    {
+        D_DrawText("R_Init: Loading Graphics - ");
+    }
 
-    printf ("R_Init: Init DOOM refresh daemon - ");
-	D_RedrawTitle();
-    R_Init ();
+    R_Init();
 
-    printf ("\nP_Init: Init Playloop state.\n");
-	D_RedrawTitle();
-    P_Init ();
+    D_IntroTick();
 
-    printf ("I_Init: Setting up machine state.\n");
-	D_RedrawTitle();
-    I_Init ();
+    if (devparm)
+    {
+        D_DrawText("\nP_Init: Init Playloop state.\n");
+    }
 
-    printf ("D_CheckNetGame: Checking network game status.\n");
-	D_RedrawTitle();
-    D_CheckNetGame ();
+    P_Init();
 
-    printf ("S_Init: Setting up sound.\n");
-	D_RedrawTitle();
-    S_Init (msnd_SfxVolume*8, snd_MusicVolume);
+    D_IntroTick();
 
-    printf ("HU_Init: Setting up heads up display.\n");
-	D_RedrawTitle();
-    HU_Init ();
+    if (devparm)
+    {
+        D_DrawText("I_Init: Setting up machine state.\n");
+    }
 
-    printf ("ST_Init: Init status bar.\n");
-	D_RedrawTitle();
-    ST_Init ();
+    I_Init();
+
+    D_IntroTick();
+
+    if (devparm)
+    {
+        D_DrawText("D_CheckNetGame: Checking network game status.\n");
+    }
+
+    D_CheckNetGame();
+
+    D_IntroTick();
+
+    if (devparm)
+    {
+        D_DrawText("M_Init: Init Menu.\n");
+    }
+
+    M_Init();
+
+    D_IntroTick();
+
+    if (devparm)
+    {
+        D_DrawText("S_Init: Setting up sound.\n");
+    }
+
+    S_Init(sfxVolume * 8, musicVolume * 8, voiceVolume * 8); // [STRIFE]: voice
+
+    D_IntroTick();
+
+    if (devparm)
+    {
+        D_DrawText("HU_Init: Setting up heads up display.\n");
+    }
+
+    HU_Init();
+
+    D_IntroTick();
+
+    if (devparm)
+    {
+        D_DrawText("ST_Init: Init status bar.\n");
+    }
+
+    HU_Init();
+
+    D_IntroTick();
 
     // check for a driver that wants intermission stats
-    p = M_CheckParm ("-statcopy");
-    if (p && p<myargc-1)
+    p = M_CheckParm("-statcopy");
+    if (p && p<myargc - 1)
     {
-	// for statistics driver
-	extern  void*	statcopy;                            
+        // for statistics driver
+        extern  void*	statcopy;
 
-	statcopy = (void*)atoi(myargv[p+1]);
-	printf ("External statistics registered.\n");
-	D_RedrawTitle();
+        statcopy = (void*)atoi(myargv[p + 1]);
+        if (devparm)
+        {
+            D_DrawText("External statistics registered.\n");
+        }
+        D_RedrawTitle();
     }
+
+    D_IntroTick();
     
     // start the apropriate game based on parms
-    p = M_CheckParm ("-record");
+    p = M_CheckParm("-record");
 
-    if (p && p < myargc-1)
+    if (p && p < myargc - 1)
     {
-	G_RecordDemo (myargv[p+1]);
-	autostart = true;
+        G_RecordDemo(myargv[p + 1]);
+        autostart = true;
     }
-	
-    p = M_CheckParm ("-playdemo");
-    if (p && p < myargc-1)
-    {
-	singledemo = true;              // quit after one demo
-	G_DeferedPlayDemo (myargv[p+1]);
-	D_DoomLoop ();  // never returns
-    }
-	
-    p = M_CheckParm ("-timedemo");
-    if (p && p < myargc-1)
-    {
-	G_TimeDemo (myargv[p+1]);
-	D_DoomLoop ();  // never returns
-    }
-	
-    p = M_CheckParm ("-loadgame");
-    if (p && p < myargc-1)
-    {
-	if (M_CheckParm("-cdrom"))
-	    sprintf(file, "c:\\doomdata\\"SAVEGAMENAME"%c.dsg",myargv[p+1][0]);
-	else
-	    sprintf(file, SAVEGAMENAME"%c.dsg",myargv[p+1][0]);
-	G_LoadGame (file);
-    }
-	
 
-    if ( gameaction != ga_loadgame )
+    D_IntroTick();
+
+    p = M_CheckParm("-playdemo");
+    if (p && p < myargc - 1)
     {
-	if (autostart || netgame)
-	    G_InitNew (startskill, startepisode, startmap);
-	else
-	    D_StartTitle ();                // start up intro loop
+        singledemo = true;              // quit after one demo
+        G_DeferedPlayDemo(myargv[p + 1]);
+        D_DoomLoop();  // never returns
+    }
+
+    D_IntroTick();
+
+    p = M_CheckParm("-timedemo");
+    if (p && p < myargc - 1)
+    {
+        G_TimeDemo(myargv[p + 1]);
+        D_DoomLoop();  // never returns
+    }
+
+    D_IntroTick();
+
+    p = M_CheckParm("-loadgame");
+    if (p && p < myargc - 1)
+    {
+        G_LoadGame(atoi(myargv[p + 1][0]));
+    }
+
+    D_IntroTick();
+
+    if (gameaction != ga_loadgame)
+    {
+        if (autostart || netgame)
+            G_InitNew(startskill, startmap);
+        else
+            D_StartTitle();                // start up intro loop
 
     }
 
