@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -33,95 +34,118 @@
 // atkstate, i.e. attack/fire/hit frame
 // flashstate, muzzle flash
 //
-weaponinfo_t	weaponinfo[NUMWEAPONS] =
+
+// villsa [STRIFE]
+weaponinfo_t    weaponinfo[NUMWEAPONS] =
 {
     {
-	// fist
-	am_noammo,
-	S_PUNCHUP,
-	S_PUNCHDOWN,
-	S_PUNCH,
-	S_PUNCH1,
-	S_NULL
+        // fist
+        am_noammo,
+        S_PNCH_03,
+        S_PNCH_02,
+        S_PNCH_01,
+        S_PNCH_04,
+        S_NULL,
+        1
     },	
     {
-	// pistol
-	am_clip,
-	S_PISTOLUP,
-	S_PISTOLDOWN,
-	S_PISTOL,
-	S_PISTOL1,
-	S_PISTOLFLASH
+        // electric bow
+        am_elecbolts,
+        S_XBOW_02,
+        S_XBOW_01,
+        S_XBOW_00,
+        S_XBOW_03,
+        S_NULL,
+        1
     },	
     {
-	// shotgun
-	am_shell,
-	S_SGUNUP,
-	S_SGUNDOWN,
-	S_SGUN,
-	S_SGUN1,
-	S_SGUNFLASH1
+        // rifle
+        am_bullets,
+        S_RIFG_02,
+        S_RIFG_01,
+        S_RIFG_00,
+        S_RIFF_00,
+        S_NULL,
+        1
     },
     {
-	// chaingun
-	am_clip,
-	S_CHAINUP,
-	S_CHAINDOWN,
-	S_CHAIN,
-	S_CHAIN1,
-	S_CHAINFLASH1
+        // missile launcher
+        am_missiles,
+        S_MMIS_02,
+        S_MMIS_01,
+        S_MMIS_00,
+        S_MMIS_03,
+        S_NULL,
+        0
     },
     {
-	// missile launcher
-	am_misl,
-	S_MISSILEUP,
-	S_MISSILEDOWN,
-	S_MISSILE,
-	S_MISSILE1,
-	S_MISSILEFLASH1
+        // grenade launcher
+        am_hegrenades,
+        S_GREN_02,
+        S_GREN_01,
+        S_GREN_00,
+        S_GREN_03,
+        S_GREF_00,
+        0
     },
     {
-	// plasma rifle
-	am_cell,
-	S_PLASMAUP,
-	S_PLASMADOWN,
-	S_PLASMA,
-	S_PLASMA1,
-	S_PLASMAFLASH1
+        // flame thrower
+        am_cell,
+        S_FLMT_03,
+        S_FLMT_02,
+        S_FLMT_00,
+        S_FLMF_00,
+        S_NULL,
+        1
     },
     {
-	// bfg 9000
-	am_cell,
-	S_BFGUP,
-	S_BFGDOWN,
-	S_BFG,
-	S_BFG1,
-	S_BFGFLASH1
+        // mauler
+        am_cell,
+        S_BLST_05,
+        S_BLST_04,
+        S_BLST_00,
+        S_BLSF_00,
+        S_NULL,
+        0
     },
     {
-	// chainsaw
-	am_noammo,
-	S_SAWUP,
-	S_SAWDOWN,
-	S_SAW,
-	S_SAW1,
-	S_NULL
+        // sigil
+        am_noammo,
+        S_SIGH_06,
+        S_SIGH_05,
+        S_SIGH_00,
+        S_SIGH_07,
+        S_SIGF_00,
+        0
     },
     {
-	// super shotgun
-	am_shell,
-	S_DSGUNUP,
-	S_DSGUNDOWN,
-	S_DSGUN,
-	S_DSGUN1,
-	S_DSGUNFLASH1
+        // poison bow
+        am_poisonbolts,
+        S_XBOW_15,
+        S_XBOW_14,
+        S_XBOW_13,
+        S_XBOW_16,
+        S_NULL,
+        1
+    },
+    {
+        // wp grenade launcher
+        am_wpgrenades,
+        S_GREN_10,
+        S_GREN_09,
+        S_GREN_08,
+        S_GREN_11,
+        S_GREF_03,
+        0
+    },
+    {
+        // torpedo
+        am_cell,
+        S_BLST_18,
+        S_BLST_17,
+        S_BLST_13,
+        S_BLST_19,
+        S_NULL,
+        0
     },	
 };
-
-
-
-
-
-
-
-

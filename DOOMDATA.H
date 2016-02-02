@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -115,22 +116,34 @@ typedef struct
 // top and bottom textures (use next to windows).
 
 // upper texture unpegged
-#define ML_DONTPEGTOP		8
+#define ML_DONTPEGTOP           8
 
 // lower texture unpegged
-#define ML_DONTPEGBOTTOM	16	
+#define ML_DONTPEGBOTTOM        16	
 
 // In AutoMap: don't map as two sided: IT'S A SECRET!
-#define ML_SECRET		32
+#define ML_SECRET               32
 
 // Sound rendering: don't let sound cross two of these.
-#define ML_SOUNDBLOCK		64
+#define ML_SOUNDBLOCK           64
 
 // Don't draw on the automap at all.
-#define ML_DONTDRAW		128
+#define ML_DONTDRAW             128
 
 // Set if already seen, thus drawn in automap.
-#define ML_MAPPED		256
+#define ML_MAPPED               256
+
+// villsa [STRIFE] jump over rails?
+#define ML_JUMPOVER             512
+
+// villsa [STRIFE] block flying things
+#define ML_BLOCKFLOATERS        1024
+
+// villsa [STRIFE] TODO - 25% or 75% transcluency?
+#define ML_TRANSPARENT1         2048
+
+// villsa [STRIFE] TODO - 25% or 75% transcluency?
+#define ML_TRANSPARENT2         4096
 
 
 

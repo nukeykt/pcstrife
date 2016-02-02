@@ -21,7 +21,7 @@
 #define __R_SKY__
 
 // SKY, store the number for name.
-#define			SKYFLATNAME  "F_SKY1"
+#define			SKYFLATNAME  "F_SKY001"
 
 // The sky map is 256*128*4 maps.
 #define ANGLETOSKYSHIFT		22

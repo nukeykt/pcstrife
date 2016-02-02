@@ -1,7 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -23,6 +23,7 @@
 #include <graph.h>
 #include "d_main.h"
 #include "doomdef.h"
+#include "doomstat.h"
 #include "r_local.h"
 #include "sounds.h"
 #include "i_system.h"
@@ -40,9 +41,9 @@
 
 void main(int argc, char **argv)
 {
-	myargc = argc;
-	myargv = argv;
-	D_DoomMain();
+    myargc = argc;
+    myargv = argv;
+    D_DoomMain();
 }
 
 void I_StartupNet (void);
@@ -50,8 +51,8 @@ void I_ShutdownNet (void);
 
 typedef struct
 {
-	unsigned        edi, esi, ebp, reserved, ebx, edx, ecx, eax;
-	unsigned short  flags, es, ds, fs, gs, ip, cs, sp, ss;
+    unsigned        edi, esi, ebp, reserved, ebx, edx, ecx, eax;
+    unsigned short  flags, es, ds, fs, gs, ip, cs, sp, ss;
 } dpmiregs_t;
 
 extern  dpmiregs_t      dpmiregs;
@@ -66,7 +67,7 @@ extern void **lumpcache;
 /*
 =============================================================================
 
-							CONSTANTS
+                            CONSTANTS
 
 =============================================================================
 */
@@ -196,26 +197,26 @@ int kbdtail, kbdhead;
 #define SC_LSHIFT       0x2a
 
 byte        scantokey[128] =
-					{
+{
 //  0           1       2       3       4       5       6       7
 //  8           9       A       B       C       D       E       F
-	0  ,    27,     '1',    '2',    '3',    '4',    '5',    '6',
-	'7',    '8',    '9',    '0',    '-',    '=',    KEY_BACKSPACE, 9, // 0
-	'q',    'w',    'e',    'r',    't',    'y',    'u',    'i',
-	'o',    'p',    '[',    ']',    13 ,    KEY_RCTRL,'a',  's',      // 1
-	'd',    'f',    'g',    'h',    'j',    'k',    'l',    ';',
-	39 ,    '`',    KEY_LSHIFT,92,  'z',    'x',    'c',    'v',      // 2
-	'b',    'n',    'm',    ',',    '.',    '/',    KEY_RSHIFT,'*',
-	KEY_RALT,' ',   0  ,    KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5,   // 3
-	KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10,0  ,    0  , KEY_HOME,
-	KEY_UPARROW,KEY_PGUP,'-',KEY_LEFTARROW,'5',KEY_RIGHTARROW,'+',KEY_END, //4
-	KEY_DOWNARROW,KEY_PGDN,KEY_INS,KEY_DEL,0,0,             0,              KEY_F11,
-	KEY_F12,0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0,        // 5
-	0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0,
-	0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0,        // 6
-	0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0,
-	0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0         // 7
-					};
+    0  ,    27,     '1',    '2',    '3',    '4',    '5',    '6',
+    '7',    '8',    '9',    '0',    '-',    '=',    KEY_BACKSPACE, 9, // 0
+    'q',    'w',    'e',    'r',    't',    'y',    'u',    'i',
+    'o',    'p',    '[',    ']',    13 ,    KEY_RCTRL,'a',  's',      // 1
+    'd',    'f',    'g',    'h',    'j',    'k',    'l',    ';',
+    39 ,    '`',    KEY_LSHIFT,92,  'z',    'x',    'c',    'v',      // 2
+    'b',    'n',    'm',    ',',    '.',    '/',    KEY_RSHIFT,'*',
+    KEY_RALT,' ',   0  ,    KEY_F1, KEY_F2, KEY_F3, KEY_F4, KEY_F5,   // 3
+    KEY_F6, KEY_F7, KEY_F8, KEY_F9, KEY_F10,0  ,    0  , KEY_HOME,
+    KEY_UPARROW,KEY_PGUP,'-',KEY_LEFTARROW,KEY_RALT,KEY_RIGHTARROW,'+',KEY_END, //4
+    KEY_DOWNARROW,KEY_PGDN,KEY_INS,KEY_DEL,0,0,             0,              KEY_F11,
+    KEY_F12,0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0,        // 5
+    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0,
+    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0,        // 6
+    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0,
+    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0  ,    0         // 7
+};
 
 //==========================================================================
 
@@ -249,6 +250,8 @@ int I_GetTime(void)
 {
     return ticcount;
 }
+
+void I_WaitVBL(int vbls);
 
 //
 // I_ColorBorder
@@ -381,6 +384,8 @@ void I_UpdateBox(int x, int y, int w, int h)
     if (x < 0 || y < 0 || w <= 0 || h <= 0
      || x + w > SCREENWIDTH || y + h > SCREENHEIGHT)
     {
+        //NUKE-TODO:
+        return;
         I_Error("Bad I_UpdateBox (%i, %i, %i, %i)", x, y, w, h);
     }
 
@@ -942,8 +947,6 @@ int basejoyx, basejoyy;
 
 void I_StartupJoystick(void)
 {
-    int buttons;
-    int count;
     int centerx, centery;
 
     joystickpresent = 0;
@@ -964,7 +967,7 @@ void I_StartupJoystick(void)
 
     if (showintro)
     {
-        memset(0xa0000, 0, 64000);
+        memset((void*)0xa0000, 0, 64000);
     }
 
     D_SetCursorPosition(0, 0);
@@ -1096,7 +1099,7 @@ void I_StartupDPMI(void)
     // lock the entire program down
     //
 
-    _dpmi_lockregion(&__begtext, &___argc - &__begtext);
+    //_dpmi_lockregion(&__begtext, &___argc - &__begtext);
 }
 
 
@@ -1174,7 +1177,7 @@ void I_Init (void)
     p = M_CheckParm("-control");
     if (p)
     {
-        extcontrol = atoi(myargv[p + 1]);
+        extcontrol = (extapi_t*)atoi(myargv[p + 1]);
         printf("Using external control API\n");
     }
     if (devparm)
@@ -1260,7 +1263,7 @@ void I_Quit(void)
     }
 
     M_SaveDefaults();
-    scr = (byte*)W_CacheLumpName("ENSTRF", PU_CACHE);
+    scr = (byte*)W_CacheLumpName("ENDSTRF", PU_CACHE);
     I_Shutdown();
     memcpy((void *)0xb8000, scr, 80 * 25 * 2);
     regs.w.ax = 0x0200;
@@ -1313,7 +1316,7 @@ byte *I_ZoneBase (int *size)
 
     if (devparm)
     {
-        printf("%ld.%dM allocated for zone\n", ebx / 0x100000, ebx % 0x100000);
+        printf("%ld.%dM allocated for zone\n", heap / 0x100000, heap % 0x100000);
     }
 
     if (heap < 5000000)
@@ -1332,6 +1335,7 @@ byte *I_ZoneBase (int *size)
     if (M_CheckParm("-novoice"))
     {
         disable_voices = true;
+        dialogshowtext = true;
     }
 
     if (devparm)

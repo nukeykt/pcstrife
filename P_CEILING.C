@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -161,6 +162,11 @@ void T_MoveCeiling (ceiling_t* ceiling)
 // EV_DoCeiling
 // Move a ceiling up/down and all around!
 //
+// haleyjd 10/04/10: [STRIFE] Changes:
+// * Fast crushers were made 2x as fast.
+// * lowerAndCrush was apparently "fixed" to actually crush, and was also
+//   altered to lower all the way to the floor rather than remain 8 above.
+// * silentCrushAndRaise and crushAndRaise no longer crush.
 int
 EV_DoCeiling
 ( line_t*	line,
@@ -196,25 +202,38 @@ EV_DoCeiling
 	ceiling = Z_Malloc (sizeof(*ceiling), PU_LEVSPEC, 0);
 	P_AddThinker (&ceiling->thinker);
 	sec->specialdata = ceiling;
-	ceiling->thinker.function.acp1 = (actionf_p1)T_MoveCeiling;
+	ceiling->thinker.function = T_MoveCeiling;
 	ceiling->sector = sec;
 	ceiling->crush = false;
 	
 	switch(type)
 	{
 	  case fastCrushAndRaise:
+        // [STRIFE]: Speed of fast crushers increased by 2x!
 	    ceiling->crush = true;
 	    ceiling->topheight = sec->ceilingheight;
 	    ceiling->bottomheight = sec->floorheight + (8*FRACUNIT);
 	    ceiling->direction = -1;
-	    ceiling->speed = CEILSPEED * 2;
+	    ceiling->speed = CEILSPEED * 4; // [STRIFE] Was CEILSPEED * 2
 	    break;
+
+      case lowerAndCrush:
+        // [STRIFE] lowerAndCrush doesn't seem to have crushed in DOOM,
+        // but it was certainly made to do so in Strife! It is also
+        // changed to lower all the way to the floor.
+        ceiling->crush = true;
+        ceiling->direction = -1;
+        ceiling->speed = CEILSPEED;
+        ceiling->bottomheight = sec->floorheight;
+        break;
 
 	  case silentCrushAndRaise:
 	  case crushAndRaise:
-	    ceiling->crush = true;
+        // [STRIFE] haleyjd 20130209: Turns out these types do NOT crush
+        // in Strife... yeah, that makes a lot of sense. Thanks to Gez for
+        // having detected this difference.
+	    // ceiling->crush = true;
 	    ceiling->topheight = sec->ceilingheight;
-	  case lowerAndCrush:
 	  case lowerToFloor:
 	    ceiling->bottomheight = sec->floorheight;
 	    if (type != lowerToFloor)
@@ -292,8 +311,7 @@ void P_ActivateInStasisCeiling(line_t* line)
 	    && (activeceilings[i]->direction == 0))
 	{
 	    activeceilings[i]->direction = activeceilings[i]->olddirection;
-	    activeceilings[i]->thinker.function.acp1
-	      = (actionf_p1)T_MoveCeiling;
+	    activeceilings[i]->thinker.function = T_MoveCeiling;
 	}
     }
 }
@@ -317,7 +335,7 @@ int	EV_CeilingCrushStop(line_t	*line)
 	    && (activeceilings[i]->direction != 0))
 	{
 	    activeceilings[i]->olddirection = activeceilings[i]->direction;
-	    activeceilings[i]->thinker.function.acv = (actionf_v)NULL;
+	    activeceilings[i]->thinker.function = NULL;
 	    activeceilings[i]->direction = 0;		// in-stasis
 	    rtn = 1;
 	}

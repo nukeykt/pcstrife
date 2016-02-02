@@ -1,6 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
+// Copyright (C) 2005-2014 Simon Howard
 // Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
@@ -41,7 +42,12 @@ void D_DoomMain (void);
 // Called by IO functions when input is detected.
 void D_PostEvent (event_t* ev);
 
+
+// Read events from all input devices
+
+void D_ProcessEvents(void);
 	
+void D_SetCursorPosition(int column, int row);
 
 //
 // BASE LEVEL
@@ -50,5 +56,16 @@ void D_PageTicker (void);
 void D_PageDrawer (void);
 void D_AdvanceDemo (void);
 void D_StartTitle (void);
+void D_DrawText(char *string); // [STRIFE]
+void D_QuitGame(void); // [STRIFE]
+
+void D_IntroTick(void); // [STRIFE]
+
+extern  boolean         isregistered;   // villsa [STRIFE]
+extern  boolean        isdemoversion;  // haleyjd [STRIFE]
+extern  boolean         stonecold;      // villsa [STRIFE]
+extern  boolean         workparm;       // villsa [STRIFE]
+extern  boolean         disable_voices;
+extern  boolean         showintro;
 
 #endif

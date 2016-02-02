@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -35,89 +36,94 @@
 //
 // TELEPORTATION
 //
+// haleyjd 09/22/10: [STRIFE] Modified to take a flags parameter to control
+// silent teleportation. Rogue also removed the check for missiles, and the 
+// z-set was replaced with one in P_TeleportMove.
+//
 int
 EV_Teleport
-( line_t*	line,
-  int		side,
-  mobj_t*	thing )
+( line_t*       line,
+  int           side,
+  mobj_t*       thing,
+  teleflags_e   flags)
 {
-    int		i;
-    int		tag;
-    mobj_t*	m;
-    mobj_t*	fog;
-    unsigned	an;
-    thinker_t*	thinker;
-    sector_t*	sector;
-    fixed_t	oldx;
-    fixed_t	oldy;
-    fixed_t	oldz;
+    int         tag;
+    mobj_t*     m;
+    mobj_t*     fog;
+    unsigned    an;
+    thinker_t*  thinker;
+    fixed_t     oldx;
+    fixed_t     oldy;
+    fixed_t     oldz;
 
+    // haleyjd 20110205 [STRIFE]: this is not checked here
     // don't teleport missiles
-    if (thing->flags & MF_MISSILE)
-	return 0;		
+    //if (thing->flags & MF_MISSILE)
+    //    return 0;
+
 
     // Don't teleport if hit back of line,
     //  so you can get out of teleporter.
-    if (side == 1)		
-	return 0;	
+    if (side == 1)
+        return 0;
 
-    
+
     tag = line->tag;
-    for (i = 0; i < numsectors; i++)
+
+    for (thinker = thinkercap.next; thinker != &thinkercap; thinker = thinker->next)
     {
-	if (sectors[ i ].tag == tag )
-	{
-	    thinker = thinkercap.next;
-	    for (thinker = thinkercap.next;
-		 thinker != &thinkercap;
-		 thinker = thinker->next)
-	    {
-		// not a mobj
-		if (thinker->function.acp1 != (actionf_p1)P_MobjThinker)
-		    continue;	
+        // not a mobj
+        if (thinker->function != P_MobjThinker)
+            continue;
 
-		m = (mobj_t *)thinker;
-		
-		// not a teleportman
-		if (m->type != MT_TELEPORTMAN )
-		    continue;		
+        m = (mobj_t *)thinker;
 
-		sector = m->subsector->sector;
-		// wrong sector
-		if (sector-sectors != i )
-		    continue;	
+        // not a teleportman
+        if (m->type != MT_TELEPORTMAN)
+            continue;
 
-		oldx = thing->x;
-		oldy = thing->y;
-		oldz = thing->z;
-				
-		if (!P_TeleportMove (thing, m->x, m->y))
-		    return 0;
-		
-		thing->z = thing->floorz;  //fixme: not needed?
-		if (thing->player)
-		    thing->player->viewz = thing->z+thing->player->viewheight;
-				
-		// spawn teleport fog at source and destination
-		fog = P_SpawnMobj (oldx, oldy, oldz, MT_TFOG);
-		S_StartSound (fog, sfx_telept);
-		an = m->angle >> ANGLETOFINESHIFT;
-		fog = P_SpawnMobj (m->x+20*finecosine[an], m->y+20*finesine[an]
-				   , thing->z, MT_TFOG);
+        if (m->subsector->sector->tag != tag)
+            continue;
 
-		// emit sound, where?
-		S_StartSound (fog, sfx_telept);
-		
-		// don't move for a bit
-		if (thing->player)
-		    thing->reactiontime = 18;	
+        oldx = thing->x;
+        oldy = thing->y;
+        oldz = thing->z;
 
-		thing->angle = m->angle;
-		thing->momx = thing->momy = thing->momz = 0;
-		return 1;
-	    }	
-	}
+        if (!P_TeleportMove(thing, m->x, m->y))
+            return 0;
+
+        // haleyjd 20110205 [STRIFE] This code is *not* present,
+        // because of a z-set which Rogue added to P_TeleportMove.
+        // thing->z = thing->floorz;
+        if (thing->player)
+            thing->player->viewz = thing->z + thing->player->viewheight;
+
+        // spawn teleport fog at source and destination
+        // haleyjd 09/22/10: [STRIFE] controlled by teleport flags
+        // BUG: Behavior would be undefined if this function were passed
+        // any combination of teleflags that has the NO*FOG but not the
+        // corresponding NO*SND flag - fortunately this is never done
+        // anywhere in the code.
+        if (!(flags & TF_NOSRCFOG))
+            fog = P_SpawnMobj(oldx, oldy, oldz, MT_TFOG);
+        if (!(flags & TF_NOSRCSND))
+            S_StartSound(fog, sfx_telept);
+
+        an = m->angle >> ANGLETOFINESHIFT;
+
+        if (!(flags & TF_NODSTFOG))
+            fog = P_SpawnMobj(m->x + 20 * finecosine[an], m->y + 20 * finesine[an],
+                thing->z, MT_TFOG);
+        if (!(flags & TF_NODSTSND))
+            S_StartSound(fog, sfx_telept);
+
+        // don't move for a bit
+        if (thing->player)
+            thing->reactiontime = 18;
+
+        thing->angle = m->angle;
+        thing->momx = thing->momy = thing->momz = 0;
+        return 1;
     }
     return 0;
 }
-

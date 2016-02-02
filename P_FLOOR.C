@@ -37,6 +37,9 @@
 //
 // Move a plane (floor or ceiling) and check for crushing
 //
+// [STRIFE] Various changes were made to remove calls to P_ChangeSector when
+// P_ChangeSector returns true.
+//
 result_e
 T_MovePlane
 ( sector_t*	sector,
@@ -48,148 +51,150 @@ T_MovePlane
 {
     boolean	flag;
     fixed_t	lastpos;
-	
-    switch(floorOrCeiling)
+
+    switch (floorOrCeiling)
     {
-      case 0:
-	// FLOOR
-	switch(direction)
-	{
-	  case -1:
-	    // DOWN
-	    if (sector->floorheight - speed < dest)
-	    {
-		lastpos = sector->floorheight;
-		sector->floorheight = dest;
-		flag = P_ChangeSector(sector,crush);
-		if (flag == true)
-		{
-		    sector->floorheight =lastpos;
-		    P_ChangeSector(sector,crush);
-		    //return crushed;
-		}
-		return pastdest;
-	    }
-	    else
-	    {
-		lastpos = sector->floorheight;
-		sector->floorheight -= speed;
-		flag = P_ChangeSector(sector,crush);
-		if (flag == true)
-		{
-		    sector->floorheight = lastpos;
-		    P_ChangeSector(sector,crush);
-		    return crushed;
-		}
-	    }
-	    break;
-						
-	  case 1:
-	    // UP
-	    if (sector->floorheight + speed > dest)
-	    {
-		lastpos = sector->floorheight;
-		sector->floorheight = dest;
-		flag = P_ChangeSector(sector,crush);
-		if (flag == true)
-		{
-		    sector->floorheight = lastpos;
-		    P_ChangeSector(sector,crush);
-		    //return crushed;
-		}
-		return pastdest;
-	    }
-	    else
-	    {
-		// COULD GET CRUSHED
-		lastpos = sector->floorheight;
-		sector->floorheight += speed;
-		flag = P_ChangeSector(sector,crush);
-		if (flag == true)
-		{
-		    if (crush == true)
-			return crushed;
-		    sector->floorheight = lastpos;
-		    P_ChangeSector(sector,crush);
-		    return crushed;
-		}
-	    }
-	    break;
-	}
-	break;
-									
-      case 1:
-	// CEILING
-	switch(direction)
-	{
-	  case -1:
-	    // DOWN
-	    if (sector->ceilingheight - speed < dest)
-	    {
-		lastpos = sector->ceilingheight;
-		sector->ceilingheight = dest;
-		flag = P_ChangeSector(sector,crush);
+    case 0:
+        // FLOOR
+        switch (direction)
+        {
+        case -1:
+            // DOWN
+            if (sector->floorheight - speed < dest)
+            {
+                // villsa [STRIFE] unused
+                //lastpos = sector->floorheight;
+                sector->floorheight = dest;
+                flag = P_ChangeSector(sector, crush);
+                // villsa [STRIFE] unused
+                /*if (flag == true)
+                {
+                    sector->floorheight = lastpos;
+                    P_ChangeSector(sector, crush);
+                    //return crushed;
+                }*/
+                return pastdest;
+            }
+            else
+            {
+                // villsa [STRIFE] unused
+                //lastpos = sector->floorheight;
+                sector->floorheight -= speed;
+                flag = P_ChangeSector(sector, crush);
 
-		if (flag == true)
-		{
-		    sector->ceilingheight = lastpos;
-		    P_ChangeSector(sector,crush);
-		    //return crushed;
-		}
-		return pastdest;
-	    }
-	    else
-	    {
-		// COULD GET CRUSHED
-		lastpos = sector->ceilingheight;
-		sector->ceilingheight -= speed;
-		flag = P_ChangeSector(sector,crush);
+                // villsa [STRIFE] unused
+                /*if (flag == true)
+                {
+                sector->floorheight = lastpos;
+                P_ChangeSector(sector,crush);
+                return crushed;
+                }*/
+            }
+            break;
 
-		if (flag == true)
-		{
-		    if (crush == true)
-			return crushed;
-		    sector->ceilingheight = lastpos;
-		    P_ChangeSector(sector,crush);
-		    return crushed;
-		}
-	    }
-	    break;
-						
-	  case 1:
-	    // UP
-	    if (sector->ceilingheight + speed > dest)
-	    {
-		lastpos = sector->ceilingheight;
-		sector->ceilingheight = dest;
-		flag = P_ChangeSector(sector,crush);
-		if (flag == true)
-		{
-		    sector->ceilingheight = lastpos;
-		    P_ChangeSector(sector,crush);
-		    //return crushed;
-		}
-		return pastdest;
-	    }
-	    else
-	    {
-		lastpos = sector->ceilingheight;
-		sector->ceilingheight += speed;
-		flag = P_ChangeSector(sector,crush);
-// UNUSED
-#if 0
-		if (flag == true)
-		{
-		    sector->ceilingheight = lastpos;
-		    P_ChangeSector(sector,crush);
-		    return crushed;
-		}
-#endif
-	    }
-	    break;
-	}
-	break;
-		
+        case 1:
+            // UP
+            if (sector->floorheight + speed > dest)
+            {
+                lastpos = sector->floorheight;
+                sector->floorheight = dest;
+                flag = P_ChangeSector(sector, crush);
+                if (flag == true)
+                {
+                    sector->floorheight = lastpos;
+                    P_ChangeSector(sector, crush);
+                    //return crushed;
+                }
+                return pastdest;
+            }
+            else
+            {
+                // COULD GET CRUSHED
+                lastpos = sector->floorheight;
+                sector->floorheight += speed;
+                flag = P_ChangeSector(sector, crush);
+                if (flag == true)
+                {
+                    // haleyjd 20130210: Bug fix - Strife DOES do this.
+                    if (crush == true)
+                        return crushed;
+                    sector->floorheight = lastpos;
+                    P_ChangeSector(sector, crush);
+                    return crushed;
+                }
+            }
+            break;
+        }
+        break;
+
+    case 1:
+        // CEILING
+        switch (direction)
+        {
+        case -1:
+            // DOWN
+            if (sector->ceilingheight - speed < dest)
+            {
+                lastpos = sector->ceilingheight;
+                sector->ceilingheight = dest;
+                flag = P_ChangeSector(sector, crush);
+
+                if (flag == true)
+                {
+                    sector->ceilingheight = lastpos;
+                    P_ChangeSector(sector, crush);
+                    //return crushed;
+                }
+                return pastdest;
+            }
+            else
+            {
+                // COULD GET CRUSHED
+                lastpos = sector->ceilingheight;
+                sector->ceilingheight -= speed;
+                flag = P_ChangeSector(sector, crush);
+
+                if (flag == true)
+                {
+                    if (crush == true)
+                        return crushed;
+                    sector->ceilingheight = lastpos;
+                    P_ChangeSector(sector, crush);
+                    return crushed;
+                }
+            }
+            break;
+
+        case 1:
+            // UP
+            if (sector->ceilingheight + speed > dest)
+            {
+                // villsa [STRIFE] unused
+                //lastpos = sector->ceilingheight;
+                sector->ceilingheight = dest;
+
+                // villsa [STRIFE] unused
+                //flag = P_ChangeSector(sector, crush);
+                /*if (flag == true)
+                {
+                    sector->ceilingheight = lastpos;
+                    P_ChangeSector(sector, crush);
+                    //return crushed;
+                }*/
+                return pastdest;
+            }
+            else
+            {
+                // villsa [STRIFE] unused
+                //lastpos = sector->ceilingheight;
+                sector->ceilingheight += speed;
+                // villsa [STRIFE] unused
+                //flag = P_ChangeSector(sector, crush);
+            }
+            break;
+        }
+        break;
+
     }
     return ok;
 }
@@ -248,6 +253,11 @@ void T_MoveFloor(floormove_t* floor)
 //
 // HANDLE FLOOR TYPES
 //
+// haleyjd 09/16/2010: [STRIFE] Modifications to floortypes:
+// * raiseFloor24 was changed into raiseFloor64
+// * turboLower does not appear to adjust the floor height (STRIFE-TODO: verify)
+// * raiseFloor512AndChange type was added.
+//
 int
 EV_DoFloor
 ( line_t*	line,
@@ -274,13 +284,13 @@ EV_DoFloor
 	floor = Z_Malloc (sizeof(*floor), PU_LEVSPEC, 0);
 	P_AddThinker (&floor->thinker);
 	sec->specialdata = floor;
-	floor->thinker.function.acp1 = (actionf_p1) T_MoveFloor;
+	floor->thinker.function = T_MoveFloor;
 	floor->type = floortype;
 	floor->crush = false;
 
 	switch(floortype)
 	{
-	  case lowerFloor:
+	  case lowerFloor: // [STRIFE] verified unmodified
 	    floor->direction = -1;
 	    floor->sector = sec;
 	    floor->speed = FLOORSPEED;
@@ -288,7 +298,7 @@ EV_DoFloor
 		P_FindHighestFloorSurrounding(sec);
 	    break;
 
-	  case lowerFloorToLowest:
+	  case lowerFloorToLowest: // [STRIFE] verified unmodified
 	    floor->direction = -1;
 	    floor->sector = sec;
 	    floor->speed = FLOORSPEED;
@@ -296,17 +306,17 @@ EV_DoFloor
 		P_FindLowestFloorSurrounding(sec);
 	    break;
 
-	  case turboLower:
+	  case turboLower: // [STRIFE] Modified: does not += 8
 	    floor->direction = -1;
 	    floor->sector = sec;
 	    floor->speed = FLOORSPEED * 4;
 	    floor->floordestheight = 
 		P_FindHighestFloorSurrounding(sec);
-	    if (floor->floordestheight != sec->floorheight)
-		floor->floordestheight += 8*FRACUNIT;
+	    //if (floor->floordestheight != sec->floorheight)
+		//floor->floordestheight += 8*FRACUNIT;
 	    break;
 
-	  case raiseFloorCrush:
+	  case raiseFloorCrush: // [STRIFE] verified unmodified
 	    floor->crush = true;
 	  case raiseFloor:
 	    floor->direction = 1;
@@ -320,7 +330,7 @@ EV_DoFloor
 		(floortype == raiseFloorCrush);
 	    break;
 
-	  case raiseFloorTurbo:
+	  case raiseFloorTurbo: // [STRIFE] verified unmodified
 	    floor->direction = 1;
 	    floor->sector = sec;
 	    floor->speed = FLOORSPEED*4;
@@ -328,7 +338,7 @@ EV_DoFloor
 		P_FindNextHighestFloor(sec,sec->floorheight);
 	    break;
 
-	  case raiseFloorToNearest:
+	  case raiseFloorToNearest: // [STRIFE] verified unmodified
 	    floor->direction = 1;
 	    floor->sector = sec;
 	    floor->speed = FLOORSPEED;
@@ -336,14 +346,14 @@ EV_DoFloor
 		P_FindNextHighestFloor(sec,sec->floorheight);
 	    break;
 
-	  case raiseFloor24:
+	  case raiseFloor64: // [STRIFE] modified from raiseFloor24!
 	    floor->direction = 1;
 	    floor->sector = sec;
 	    floor->speed = FLOORSPEED;
 	    floor->floordestheight = floor->sector->floorheight +
-		24 * FRACUNIT;
+		64 * FRACUNIT;
 	    break;
-	  case raiseFloor512:
+	  case raiseFloor512: // [STRIFE] verified unmodified
 	    floor->direction = 1;
 	    floor->sector = sec;
 	    floor->speed = FLOORSPEED;
@@ -351,7 +361,7 @@ EV_DoFloor
 		512 * FRACUNIT;
 	    break;
 
-	  case raiseFloor24AndChange:
+	  case raiseFloor24AndChange: // [STRIFE] verified unmodified
 	    floor->direction = 1;
 	    floor->sector = sec;
 	    floor->speed = FLOORSPEED;
@@ -361,7 +371,17 @@ EV_DoFloor
 	    sec->special = line->frontsector->special;
 	    break;
 
-	  case raiseToTexture:
+      case raiseFloor512AndChange: // [STRIFE] New floor type
+        floor->direction = 1;
+        floor->sector = sec;
+        floor->speed = FLOORSPEED;
+        floor->floordestheight = floor->sector->floorheight +
+            512 * FRACUNIT;
+        sec->floorpic = line->frontsector->floorpic;
+        sec->special = line->frontsector->special;
+        break;
+
+	  case raiseToTexture: // [STRIFE] verified unmodified
 	  {
 	      int	minsize = MAXINT;
 	      side_t*	side;
@@ -392,7 +412,7 @@ EV_DoFloor
 	  }
 	  break;
 	  
-	  case lowerAndChange:
+	  case lowerAndChange: // [STRIFE] verified unmodified
 	    floor->direction = -1;
 	    floor->sector = sec;
 	    floor->speed = FLOORSPEED;
@@ -446,102 +466,115 @@ EV_BuildStairs
 ( line_t*	line,
   stair_e	type )
 {
-    int			secnum;
-    int			height;
-    int			i;
-    int			newsecnum;
-    int			texture;
-    int			ok;
-    int			rtn;
+    int             secnum;
+    int             height;
+    int             i;
+    int             newsecnum;
+    int             texture;
+    int             ok;
+    int             rtn;
     
-    sector_t*		sec;
-    sector_t*		tsec;
+    sector_t*       sec;
+    sector_t*       tsec;
 
-    floormove_t*	floor;
+    floormove_t*    floor;
     
-    fixed_t		stairsize;
-    fixed_t		speed;
+    fixed_t     stairsize;
+    fixed_t     speed;
+    int         direction;
+
+    // Either Watcom or Rogue moved the switch out of the loop below, probably
+    // because it was a loop invariant, and put the default values in the 
+    // initializers here. I cannot be bothered to figure it out without doing
+    // this myself :P
+    stairsize = 8*FRACUNIT;
+    speed = FLOORSPEED;
+    direction = 1;
 
     secnum = -1;
     rtn = 0;
-    while ((secnum = P_FindSectorFromLineTag(line,secnum)) >= 0)
+
+    switch(type)
     {
-	sec = &sectors[secnum];
-		
-	// ALREADY MOVING?  IF SO, KEEP GOING...
-	if (sec->specialdata)
-	    continue;
-	
-	// new floor thinker
-	rtn = 1;
-	floor = Z_Malloc (sizeof(*floor), PU_LEVSPEC, 0);
-	P_AddThinker (&floor->thinker);
-	sec->specialdata = floor;
-	floor->thinker.function.acp1 = (actionf_p1) T_MoveFloor;
-	floor->direction = 1;
-	floor->sector = sec;
-	switch(type)
-	{
-	  case build8:
-	    speed = FLOORSPEED/4;
-	    stairsize = 8*FRACUNIT;
-	    break;
-	  case turbo16:
-	    speed = FLOORSPEED*4;
-	    stairsize = 16*FRACUNIT;
-	    break;
-	}
-	floor->speed = speed;
-	height = sec->floorheight + stairsize;
-	floor->floordestheight = height;
-		
-	texture = sec->floorpic;
-	
-	// Find next sector to raise
-	// 1.	Find 2-sided line with same sector side[0]
-	// 2.	Other side is the next sector to raise
-	do
-	{
-	    ok = 0;
-	    for (i = 0;i < sec->linecount;i++)
-	    {
-		if ( !((sec->lines[i])->flags & ML_TWOSIDED) )
-		    continue;
-					
-		tsec = (sec->lines[i])->frontsector;
-		newsecnum = tsec-sectors;
-		
-		if (secnum != newsecnum)
-		    continue;
+    case build8: // [STRIFE] Verified unmodified.
+        speed = FLOORSPEED/4;
+        break;
+    case turbo16: // [STRIFE] Verified unmodified.
+        speed = FLOORSPEED*4;
+        stairsize = 16*FRACUNIT;
+        break;
+    case buildDown16: // [STRIFE] New stair type
+        stairsize = -16*FRACUNIT;
+        direction = -1;
+        break;
+    }
+    while ((secnum = P_FindSectorFromLineTag(line, secnum)) >= 0)
+    {
+        sec = &sectors[secnum];
 
-		tsec = (sec->lines[i])->backsector;
-		newsecnum = tsec - sectors;
+        // ALREADY MOVING?  IF SO, KEEP GOING...
+        if (sec->specialdata)
+            continue;
 
-		if (tsec->floorpic != texture)
-		    continue;
-					
-		height += stairsize;
+        // new floor thinker
+        rtn = 1;
+        floor = Z_Malloc(sizeof(*floor), PU_LEVSPEC, 0);
+        P_AddThinker(&floor->thinker);
+        sec->tag = 0; // haleyjd 20140919: [STRIFE] clears tag of first stair sector
+        sec->specialdata = floor;
+        floor->thinker.function = T_MoveFloor;
+        floor->direction = direction; // haleyjd 20140919: bug fix: direction, not "1"
+        floor->sector = sec;
+        floor->speed = speed;
+        height = sec->floorheight + stairsize;
+        floor->floordestheight = height;
 
-		if (tsec->specialdata)
-		    continue;
-					
-		sec = tsec;
-		secnum = newsecnum;
-		floor = Z_Malloc (sizeof(*floor), PU_LEVSPEC, 0);
+        texture = sec->floorpic;
 
-		P_AddThinker (&floor->thinker);
+        // Find next sector to raise
+        // 1.	Find 2-sided line with same sector side[0]
+        // 2.	Other side is the next sector to raise
+        do
+        {
+            ok = 0;
+            for (i = 0; i < sec->linecount; i++)
+            {
+                if (!((sec->lines[i])->flags & ML_TWOSIDED))
+                    continue;
 
-		sec->specialdata = floor;
-		floor->thinker.function.acp1 = (actionf_p1) T_MoveFloor;
-		floor->direction = 1;
-		floor->sector = sec;
-		floor->speed = speed;
-		floor->floordestheight = height;
-		ok = 1;
-		break;
-	    }
-	} while(ok);
+                tsec = (sec->lines[i])->frontsector;
+                newsecnum = tsec - sectors;
+
+                if (secnum != newsecnum)
+                    continue;
+
+                tsec = (sec->lines[i])->backsector;
+                newsecnum = tsec - sectors;
+
+                if (tsec->floorpic != texture)
+                    continue;
+
+                height += stairsize;
+
+                if (tsec->specialdata)
+                    continue;
+
+                sec = tsec;
+                secnum = newsecnum;
+                floor = Z_Malloc(sizeof(*floor), PU_LEVSPEC, 0);
+
+                P_AddThinker(&floor->thinker);
+
+                sec->specialdata = floor;
+                floor->thinker.function = T_MoveFloor;
+                floor->direction = direction; // [STRIFE]: for buildDown16
+                floor->sector = sec;
+                floor->speed = speed;
+                floor->floordestheight = height;
+                ok = 1;
+                break;
+            }
+        } while (ok);
     }
     return rtn;
 }
-

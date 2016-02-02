@@ -1,7 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -73,7 +73,7 @@ void P_AddThinker (thinker_t* thinker)
 void P_RemoveThinker (thinker_t* thinker)
 {
   // FIXME: NOP.
-  thinker->function.acv = (actionf_v)(-1);
+  thinker->function = (think_t)(-1);
 }
 
 
@@ -98,7 +98,7 @@ void P_RunThinkers (void)
     currentthinker = thinkercap.next;
     while (currentthinker != &thinkercap)
     {
-	if ( currentthinker->function.acv == (actionf_v)(-1) )
+	if ( currentthinker->function == (think_t)(-1) )
 	{
 	    // time to remove it
 	    currentthinker->next->prev = currentthinker->prev;
@@ -107,8 +107,8 @@ void P_RunThinkers (void)
 	}
 	else
 	{
-	    if (currentthinker->function.acp1)
-		currentthinker->function.acp1 (currentthinker);
+	    if (currentthinker->function)
+		currentthinker->function (currentthinker);
 	}
 	currentthinker = currentthinker->next;
     }

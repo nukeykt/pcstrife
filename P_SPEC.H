@@ -1,6 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
+// Copyright (C) 2005-2014 Simon Howard
 // Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
@@ -38,6 +39,18 @@ extern	int	levelTimeCount;
 
 // at game start
 void    P_InitPicAnims (void);
+
+// villsa [STRIFE]
+typedef enum
+{
+    FLOOR_WATER = 0,
+    FLOOR_SLIME = 1,
+    FLOOR_SOLID = 2,
+    FLOOR_END   = -1
+} terraintype_e;
+
+void P_InitTerrainTypes(void);                  // villsa [STRIFE]
+terraintype_e P_GetTerrainType(mobj_t* mobj);   // villsa [STRIFE]
 
 // at map load
 void    P_SpawnSpecials (void);
@@ -113,6 +126,7 @@ getNextSector
 // SPECIAL
 //
 int EV_DoDonut(line_t* line);
+boolean EV_ClearForceFields(line_t* line);  // villsa [STRIFE]
 
 
 
@@ -206,9 +220,10 @@ void    P_SpawnGlowingLight(sector_t* sector);
 //
 typedef struct
 {
-    char	name1[9];
-    char	name2[9];
-    short	episode;
+    char        name1[9];
+    char        name2[9];
+    short       episode;
+    int         sound;  // villsa [STRIFE]
     
 } switchlist_t;
 
@@ -236,7 +251,7 @@ typedef struct
 
 
  // max # of wall switches in a level
-#define MAXSWITCHES		50
+#define MAXSWITCHES		80  // villsa [STRIFE] changed from 50 to 80
 
  // 4 players, 4 buttons each at once, max.
 #define MAXBUTTONS		16
@@ -272,9 +287,11 @@ typedef enum
 {
     perpetualRaise,
     downWaitUpStay,
+    slowDWUS,           // villsa [STRIFE]
     raiseAndChange,
     raiseToNearestAndChange,
-    blazeDWUS
+    blazeDWUS,
+    upWaitDownStay      // villsa [STRIFE]
 
 } plattype_e;
 
@@ -325,14 +342,17 @@ void    P_ActivateInStasis(int tag);
 //
 typedef enum
 {
-    normal,
-    close30ThenOpen,
-    close,
-    open,
-    raiseIn5Mins,
-    blazeRaise,
-    blazeOpen,
-    blazeClose
+    vld_normal,
+    vld_close30ThenOpen,
+    vld_close,
+    vld_open,
+    vld_raiseIn5Mins,
+    vld_blazeRaise,
+    vld_blazeOpen,
+    vld_blazeClose,
+    vld_shopClose,          // villsa [STRIFE]
+    vld_splitRaiseNearest,  // villsa [STRIFE]
+    vld_splitOpen           // villsa [STRIFE]
 
 } vldoor_e;
 
@@ -354,6 +374,12 @@ typedef struct
     // (keep in case a door going down is reset)
     // when it reaches 0, start going down
     int             topcountdown;
+
+    // villsa [STRIFE] new field - sound to play when opening
+    int         opensound;
+
+    // villsa [STRIFE] new field - sound to play when closing
+    int         closesound;
     
 } vldoor_t;
 
@@ -387,8 +413,7 @@ P_SpawnDoorRaiseIn5Mins
   int		secnum );
 
 
-
-#if 0 // UNUSED
+// villsa [STRIFE] resurrected sliding doors
 //
 //      Sliding doors...
 //
@@ -412,63 +437,59 @@ typedef enum
 
 
 
-
+// villsa [STRIFE] Rogue added a second line_t in the struct
+// backsector is removed
 typedef struct
 {
-    thinker_t	thinker;
-    sdt_e	type;
-    line_t*	line;
-    int		frame;
-    int		whichDoorIndex;
-    int		timer;
-    sector_t*	frontsector;
-    sector_t*	backsector;
-    sd_e	 status;
+    thinker_t   thinker;
+    sdt_e       type;
+    line_t*     line1;
+    line_t*     line2;
+    int         frame;
+    int         whichDoorIndex;
+    int         timer;
+    sector_t*   frontsector;
+    sd_e        status;
 
 } slidedoor_t;
 
-
-
+// villsa [STRIFE] no front/back frames
 typedef struct
 {
-    char	frontFrame1[9];
-    char	frontFrame2[9];
-    char	frontFrame3[9];
-    char	frontFrame4[9];
-    char	backFrame1[9];
-    char	backFrame2[9];
-    char	backFrame3[9];
-    char	backFrame4[9];
+    char    frame1[9];
+    char    frame2[9];
+    char    frame3[9];
+    char    frame4[9];
+    char    frame5[9];
+    char    frame6[9];
+    char    frame7[9];
+    char    frame8[9];
     
 } slidename_t;
 
-
-
+// villsa [STRIFE] no front/back frames
 typedef struct
 {
-    int             frontFrames[4];
-    int             backFrames[4];
+    int frames[8];
 
 } slideframe_t;
 
+// haleyjd 09/29/10: [STRIFE] Externalized for savegames
+void T_SlidingDoor(slidedoor_t* door);
 
 
 // how many frames of animation
-#define SNUMFRAMES		4
+#define SNUMFRAMES      8       // villsa [STRIFE] changed from 4 to 8
 
-#define SDOORWAIT		35*3
-#define SWAITTICS		4
+#define SDOORWAIT       TICRATE*3
+#define SWAITTICS       4
 
 // how many diff. types of anims
-#define MAXSLIDEDOORS	5                            
+#define MAXSLIDEDOORS	8       // villsa [STRIFE] changed from 5 to 8                     
 
 void P_InitSlidingDoorFrames(void);
-
-void
-EV_SlidingDoor
-( line_t*	line,
-  mobj_t*	thing );
-#endif
+void EV_SlidingDoor(line_t* line, mobj_t* thing);
+int EV_RemoteSlidingDoor(line_t* line, mobj_t* thing);
 
 
 
@@ -556,14 +577,17 @@ typedef enum
     //  and change floorpic
     lowerAndChange,
   
-    raiseFloor24,
+    raiseFloor64,          // [STRIFE] changed from 24 to 64
     raiseFloor24AndChange,
     raiseFloorCrush,
 
      // raise to next highest floor, turbo-speed
     raiseFloorTurbo,       
     donutRaise,
-    raiseFloor512
+    raiseFloor512,
+
+    // [STRIFE] New floor type - used for the coolant reactor pit
+    raiseFloor512AndChange
     
 } floor_e;
 
@@ -572,8 +596,9 @@ typedef enum
 
 typedef enum
 {
-    build8,	// slowly build by 8
-    turbo16	// quickly build by 16
+    build8,     // slowly build by 8
+    turbo16,    // quickly build by 16
+    buildDown16 // haleyjd 09/24/10: [STRIFE] new stair type
     
 } stair_e;
 
@@ -629,10 +654,27 @@ void T_MoveFloor( floormove_t* floor);
 //
 // P_TELEPT
 //
+
+// [STRIFE] Teleportation flags - teleflags
+// Not to be conflated with telefrags, though they be tangentially related ;)
+typedef enum teleflags
+{
+    TF_NOSRCSND = 0x01,
+    TF_NODSTSND = 0x02,
+    TF_NODSTFOG = 0x10,
+    TF_NOSRCFOG = 0x20,
+
+    TF_NORMAL      = 0,
+    TF_DSTSILENCE  = (TF_NODSTSND|TF_NODSTFOG),    // 0x12 (18) (Not used)
+    TF_SRCSILENCE  = (TF_NOSRCSND|TF_NOSRCFOG),    // 0x21 (33)
+    TF_FULLSILENCE = (TF_SRCSILENCE|TF_DSTSILENCE) // 0x33 (51)
+
+} teleflags_e;
 int
 EV_Teleport
-( line_t*	line,
-  int		side,
-  mobj_t*	thing );
+( line_t*       line,
+  int           side,
+  mobj_t*       thing,
+  teleflags_e   flags);
 
 #endif

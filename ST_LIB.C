@@ -261,7 +261,7 @@ STlib_updateBinIcon
     int			y;
     int			w;
     int			h;
-
+    return;
     if (*bi->on
 	&& (bi->oldval != *bi->val || refresh))
     {

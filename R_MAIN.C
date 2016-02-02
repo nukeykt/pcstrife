@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -24,7 +25,9 @@
 
 
 #include "doomdef.h"
+#include "doomstat.h"   // villsa [STRIFE]
 #include "d_net.h"
+#include "d_main.h"
 
 #include "m_bbox.h"
 
@@ -66,6 +69,7 @@ int                     loopcount;
 fixed_t                 viewx;
 fixed_t                 viewy;
 fixed_t                 viewz;
+int                     viewpitch;  // villsa [STRIFE]
 
 angle_t                 viewangle;
 
@@ -75,12 +79,13 @@ fixed_t                 viewsin;
 player_t*               viewplayer;
 
 // 0 = high, 1 = low
-int                     detailshift;    
+//int                     detailshift;    
 
 //
 // precalculated math tables
 //
 angle_t                 clipangle;
+angle_t                 clipangle2;
 
 // The viewangletox[viewangle + FINEANGLES/4] lookup
 // maps the visible view angles to screen X coordinates,
@@ -117,7 +122,6 @@ void (*colfunc) (void);
 void (*basecolfunc) (void);
 void (*fuzzcolfunc) (void);
 void (*transcolfunc) (void);
-void (*spanfunc) (void);
 
 
 
@@ -264,7 +268,6 @@ R_PointOnSegSide
     return 1;                   
 }
 
-
 //
 // R_PointToAngle
 // To get a global angle from cartesian coordinates,
@@ -273,8 +276,28 @@ R_PointOnSegSide
 //  the y (<=x) is scaled and divided by x to get a
 //  tangent (slope) value which is looked up in the
 //  tantoangle[] table.
-
 //
+
+
+
+#define	SLOPERANGE	2048
+#define	SLOPEBITS	11
+#define	DBITS		(FRACBITS-SLOPEBITS)
+
+
+// Effective size is 2049;
+// The +1 size is to handle the case when x==y
+//  without additional checking.
+extern angle_t		tantoangle[SLOPERANGE + 1];
+
+int SlopeDiv(unsigned num, unsigned den)
+{
+    unsigned ans;
+    if (den < 512)
+        return SLOPERANGE;
+    ans = (num << 3) / (den >> 8);
+    return ans <= SLOPERANGE ? ans : SLOPERANGE;
+}
 
 
 
@@ -410,30 +433,6 @@ R_PointToDist
 
 
 
-
-//
-// R_InitPointToAngle
-//
-void R_InitPointToAngle (void)
-{
-    // UNUSED - now getting from tables.c
-#if 0
-    int i;
-    long        t;
-    float       f;
-//
-// slope (tangent) to angle lookup
-//
-    for (i=0 ; i<=SLOPERANGE ; i++)
-    {
-        f = atan( (float)i/SLOPERANGE )/(3.141592657*2);
-        t = 0xffffffff*f;
-        tantoangle[i] = t;
-    }
-#endif
-}
-
-
 //
 // R_ScaleFromGlobalAngle
 // Returns the texture mapping scale
@@ -474,7 +473,7 @@ fixed_t R_ScaleFromGlobalAngle (angle_t visangle)
     // both sines are allways positive
     sinea = finesine[anglea>>ANGLETOFINESHIFT]; 
     sineb = finesine[angleb>>ANGLETOFINESHIFT];
-    num = FixedMul(projection,sineb)<<detailshift;
+    num = FixedMul(projection,sineb);
     den = FixedMul(rw_distance,sinea);
 
     if (den > num>>16)
@@ -492,40 +491,6 @@ fixed_t R_ScaleFromGlobalAngle (angle_t visangle)
     return scale;
 }
 
-
-
-//
-// R_InitTables
-//
-void R_InitTables (void)
-{
-    // UNUSED: now getting from tables.c
-#if 0
-    int         i;
-    float       a;
-    float       fv;
-    int         t;
-    
-    // viewangle tangent table
-    for (i=0 ; i<FINEANGLES/2 ; i++)
-    {
-        a = (i-FINEANGLES/4+0.5)*PI*2/FINEANGLES;
-        fv = FRACUNIT*tan (a);
-        t = fv;
-        finetangent[i] = t;
-    }
-    
-    // finesine table
-    for (i=0 ; i<5*FINEANGLES/4 ; i++)
-    {
-        // OPTIMIZE: mirror...
-        a = (i+0.5)*PI*2/FINEANGLES;
-        t = FRACUNIT*sin (a);
-        finesine[i] = t;
-    }
-#endif
-
-}
 
 
 
@@ -591,6 +556,7 @@ void R_InitTextureMapping (void)
     }
         
     clipangle = xtoviewangle[0];
+    clipangle2 = 2 * clipangle;
 }
 
 
@@ -642,17 +608,14 @@ void R_InitLightTables (void)
 //
 boolean         setsizeneeded;
 int             setblocks;
-int             setdetail;
 
 
 void
 R_SetViewSize
-( int           blocks,
-  int           detail )
+( int           blocks)
 {
     setsizeneeded = true;
     setblocks = blocks;
-    setdetail = detail;
 }
 
 
@@ -681,29 +644,19 @@ void R_ExecuteSetViewSize (void)
         viewheight = (setblocks*168/10)&~7;
     }
     
-    detailshift = setdetail;
-    viewwidth = scaledviewwidth>>detailshift;
-        
-    centery = viewheight/2;
+    viewwidth = scaledviewwidth;
+
+    // villsa [STRIFE] calculate centery from player's pitch
+    centery = viewheight / 2
+        + (players[consoleplayer].pitch * setblocks) / 10;
     centerx = viewwidth/2;
     centerxfrac = centerx<<FRACBITS;
     centeryfrac = centery<<FRACBITS;
     projection = centerxfrac;
 
-    if (!detailshift)
-    {
-        colfunc = basecolfunc = R_DrawColumn;
-        fuzzcolfunc = R_DrawFuzzColumn;
-        transcolfunc = R_DrawTranslatedColumn;
-        spanfunc = R_DrawSpan;
-    }
-    else
-    {
-        colfunc = basecolfunc = R_DrawColumnLow;
-        fuzzcolfunc = R_DrawFuzzColumn;
-        transcolfunc = R_DrawTranslatedColumn;
-        spanfunc = R_DrawSpanLow;
-    }
+    colfunc = basecolfunc = R_DrawColumn;
+    fuzzcolfunc = R_DrawTLColumn;   // villsa [STRIFE]
+    transcolfunc = R_DrawTranslatedColumn;
 
     R_InitBuffer (scaledviewwidth, viewheight);
         
@@ -720,9 +673,10 @@ void R_ExecuteSetViewSize (void)
     // planes
     for (i=0 ; i<viewheight ; i++)
     {
-        dy = ((i-viewheight/2)<<FRACBITS)+FRACUNIT/2;
+        // haleyjd 20120208: [STRIFE] viewheight/2 -> centery, accounts for up/down look
+        dy = ((i-centery)<<FRACBITS)+FRACUNIT/2;
         dy = abs(dy);
-        yslope[i] = FixedDiv ( (viewwidth<<detailshift)/2*FRACUNIT, dy);
+        yslope[i] = FixedDiv ( viewwidth/2*FRACUNIT, dy);
     }
         
     for (i=0 ; i<viewwidth ; i++)
@@ -738,7 +692,7 @@ void R_ExecuteSetViewSize (void)
         startmap = ((LIGHTLEVELS-1-i)*2)*NUMCOLORMAPS/LIGHTLEVELS;
         for (j=0 ; j<MAXLIGHTSCALE ; j++)
         {
-            level = startmap - j*SCREENWIDTH/(viewwidth<<detailshift)/DISTMAP;
+            level = startmap - j*SCREENWIDTH/viewwidth/DISTMAP;
             
             if (level < 0)
                 level = 0;
@@ -756,7 +710,6 @@ void R_ExecuteSetViewSize (void)
 //
 // R_Init
 //
-extern int      detailLevel;
 extern int      screenblocks;
 
 
@@ -764,22 +717,27 @@ extern int      screenblocks;
 void R_Init (void)
 {
     R_InitData ();
-    printf (".");
-    R_InitPointToAngle ();
-    printf (".");
-    R_InitTables ();
-    // viewwidth / viewheight / detailLevel are set by the defaults
-    printf (".");
+    if (devparm)
+        printf(".");
+    else
+        D_IntroTick(); // [STRIFE] tick intro
 
-    R_SetViewSize (screenblocks, detailLevel);
-    R_InitPlanes ();
-    printf (".");
     R_InitLightTables ();
-    printf (".");
+    if (devparm)
+        printf(".");
+    else
+        D_IntroTick();
+
     R_InitSkyMap ();
-    printf (".");
+    if (devparm)
+        printf(".");
+    else
+        D_IntroTick();
+
     R_InitTranslationTables ();
-        
+    if (!devparm)
+        D_IntroTick();
+
     framecount = 0;
 }
 
@@ -812,6 +770,32 @@ R_PointInSubsector
     return &subsectors[nodenum & ~NF_SUBSECTOR];
 }
 
+//
+// R_SetupPitch
+// villsa [STRIFE] new function
+// Calculate centery/centeryfrac for player viewpitch
+//
+
+void R_SetupPitch(player_t* player)
+{
+    fixed_t dy;
+    int i;
+
+    if (viewpitch != player->pitch)
+    {
+        viewpitch = player->pitch;
+        centery = viewheight / 2 + (viewpitch * setblocks) / 10;
+        centeryfrac = centery << FRACBITS;
+
+        for (i = 0; i < viewheight; i++)
+        {
+            dy = ((i-centery) << FRACBITS) + FRACUNIT / 2;
+            dy = abs(dy);
+            yslope[i] = FixedDiv(viewwidth / 2 * FRACUNIT, dy);
+        }
+    }
+}
+
 
 
 //
@@ -820,11 +804,13 @@ R_PointInSubsector
 void R_SetupFrame (player_t* player)
 {               
     int         i;
+
+    R_SetupPitch(player);  // villsa [STRIFE]
     
     viewplayer = player;
     viewx = player->mo->x;
     viewy = player->mo->y;
-    viewangle = player->mo->angle + viewangleoffset;
+    viewangle = player->mo->angle;
     extralight = player->extralight;
 
     viewz = player->viewz;
@@ -834,6 +820,8 @@ void R_SetupFrame (player_t* player)
         
     sscount = 0;
         
+    fixedcolormap = 0;
+
     if (player->fixedcolormap)
     {
         fixedcolormap =
@@ -845,8 +833,6 @@ void R_SetupFrame (player_t* player)
         for (i=0 ; i<MAXLIGHTSCALE ; i++)
             scalelightfixed[i] = fixedcolormap;
     }
-    else
-        fixedcolormap = 0;
     destview = destscreen + (viewwindowx/4) + (viewwindowy*SCREENWIDTH/4);
     framecount++;
     validcount++;

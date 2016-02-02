@@ -50,6 +50,7 @@
 #include "m_argv.h"
 #include "m_misc.h"
 #include "m_menu.h"
+#include "m_saves.h"
 
 #include "i_system.h"
 #include "i_sound.h"
@@ -103,7 +104,6 @@ boolean         singletics = false; // debug flag to cancel adaptiveness
 extern boolean  inhelpscreens;
 
 skill_t         startskill;
-int             startepisode;
 int             startmap;
 boolean         autostart;
 
@@ -121,6 +121,7 @@ boolean         stonecold = false;
 boolean         isregistered;
 boolean         isdemoversion;
 
+boolean         disable_voices = false;
 
 
 char            wadfile[1024];      // primary wad file
@@ -197,7 +198,7 @@ void D_ProcessEvents(void)
 // * 20100901: Added ST_DrawExternal and popupactivestate static variable
 // * 20110206: Start wipegamestate at GS_UNKNOWN (STRIFE-TODO: rename?)
 //
-gamestate_t     wipegamestate = GS_DEMOSCREEN;
+gamestate_t     wipegamestate = GS_UNKNOWN;
 extern  boolean setsizeneeded;
 extern  int             showMessages;
 void R_ExecuteSetViewSize(void);
@@ -267,7 +268,7 @@ void D_Display(void)
             redrawsbar = true;
         }
         // haleyjd 08/29/10: [STRIFE] Always redraw sbar if menu is/was active
-        if (imenuactivestate || (nhelpscreensstate && !inhelpscreens))
+        if (menuactivestate || (inhelpscreensstate && !inhelpscreens))
         {
             redrawsbar = true;  // just put away the help screen
         }
@@ -338,7 +339,9 @@ void D_Display(void)
     if (gamestate == GS_LEVEL && gametic)
     {
         HU_Drawer();
-        if (ST_DrawExternal())
+        // NUKE-TODO
+        //if (ST_DrawExternal())
+        if(true)
         {
             popupactivestate = true;
         }
@@ -429,7 +432,7 @@ void D_DoomLoop(void)
     while (1)
     {
         // frame syncronous IO operations
-        I_StartFrame();
+        I_JoystickEvents();
 
         // process one or more tics
         if (singletics)
@@ -548,6 +551,7 @@ void D_DoAdvanceDemo(void)
         pagename = "TITLEPIC";
         S_StartMusic(mus_logo);
         demosequence = -1;  // start intro cinematic
+        break;
     case -1:    // start of intro cinematic
         pagetic = 10;
         gamestate = GS_DEMOSCREEN;
@@ -647,7 +651,7 @@ void D_StartTitle(void)
 {
     gamestate = GS_DEMOSCREEN;
     gameaction = ga_nothing;
-    demosequence = -1;
+    demosequence = -2;
     D_AdvanceDemo();
 }
 
@@ -763,6 +767,9 @@ void D_DrawTitle(char *string, int bc, int tc)
 // print title for every printed line
 char    title[128] = "Conversation ON";
 
+void D_InitIntroSequence(void);
+void D_DrawIntroSequence(void);
+
 //
 // D_DrawText
 //
@@ -827,17 +834,17 @@ void D_InitIntroSequence(void)
         rawgfx_startbot = W_CacheLumpName("STRTBOT", PU_STATIC);
 
         // Fill the background entirely
-        memset(0xa0000, 0xf0, 320 * 200);
+        memset((void*)0xa0000, 0xf0, 320 * 200);
 
         // Draw a 95-pixel rect from STARTUP0 starting at y=57 to (0,41) on the
         // screen
-        memcpy(0xa0000 + 320 * 41, rawgfx_startup0 + 320 * 57,
+        memcpy((void*)(0xa0000 + 320 * 41), rawgfx_startup0 + 320 * 57,
                320 * 95);
     }
     else
     {
         // Fill the background entirely
-        memset(0xb8000, 0, 80 * 25 * 2);
+        memset((void*)0xb8000, 0, 80 * 25 * 2);
 
         // Draw title
         D_SetCursorPosition(0, 0);
@@ -903,15 +910,15 @@ void D_DrawIntroSequence(void)
         // Draw the laser
         // Blitted 16 bytes for 16 rows starting at 705280 + laserpos
         // (705280 - 0xA0000) / 320 == 156
-        for (i = 0, screen = 0xa0000 + 320 * 156 + 60; i < 16; i++)
+        for (i = 0, screen = (byte*)(0xa0000 + 320 * 156 + 60); i < 16; i++)
         {
             memset(screen, 0xf0, 200);
         }
 
-        for (i = 0, screen = 0xa0000 + 320 * 156 + laserpos; i < 16;
+        for (i = 0, screen = (byte*)(0xa0000 + 320 * 156 + laserpos); i < 16;
              i++, screen += 320)
         {
-            memcpy(screen, rawgfx_startlz[laserpos % 2] + 16 * i, 16);
+            memcpy(screen, &rawgfx_startlz[laserpos % 2][16 * i], 16);
         }
 
 
@@ -923,7 +930,7 @@ void D_DrawIntroSequence(void)
             // Draw the robot
             // Blitted 48 bytes for 48 rows starting at 699534 + (320*robotpos)
             // 699534 - 0xA0000 == 44174, which % 320 == 14, / 320 == 138
-            for (i = 0, screen = 0xa0000 + 320 * 138 + 14; i < robotpos;
+            for (i = 0, screen = (byte*)(0xa0000 + 320 * 138 + 14); i < robotpos;
                  i++, screen += 320)
             {
                 memset(screen, 0xf0, 48);
@@ -931,7 +938,7 @@ void D_DrawIntroSequence(void)
 
             for (i = 0; i < 48; i++, screen += 320)
             {
-                memcpy(screen, rawgfx_startbot, 48);
+                memcpy(screen, &rawgfx_startbot[48 * i], 48);
             }
 
             for (i = 0; i < 5 - robotpos; i++, screen += 320)
@@ -942,10 +949,10 @@ void D_DrawIntroSequence(void)
             // Draw the peasant
             // Blitted 32 bytes for 64 rows starting at 699142
             // 699142 - 0xA0000 == 43782, which % 320 == 262, / 320 == 136
-            for (i = 0; screen = 0xa0000 + 320 * 136 + 262; i < 64;
+            for (i = 0, screen = (byte*)(0xa0000 + 320 * 136 + 262); i < 64;
                  i++, screen += 320)
             {
-                memcpy(screen, rawgfx_startp[laserpos % 4], 32);
+                memcpy(screen, &rawgfx_startp[laserpos % 4][32 * i], 32);
             }
         }
     }
@@ -1055,7 +1062,7 @@ void IdentifyVersion(void)
 //
 void DoTimeBomb(void)
 {
-    dosdate_t date;
+    struct dosdate_t date;
     char *serial;
     int serialnum;
     int serial_year;
@@ -1066,7 +1073,7 @@ void DoTimeBomb(void)
 
     // Rogue, much like Governor Mourel, were lousy liars. These deceptive
     // error messages are pretty low :P
-    dos_getdate(&date);
+    _dos_getdate(&date);
     if (date.year > 1996 || date.day > 15 && date.month > 4)
     {
         I_Error("Data error! Corrupted WAD File!");
@@ -1188,7 +1195,7 @@ void D_DoomMain (void)
     }
     else
     {
-        for (i = 0; i < 6; i++)
+        for (i = 0; i <= 6; i++)
         {
             sprintf(file, "strfsav%d.ssg", i);
             mkdir(file);
@@ -1229,7 +1236,7 @@ void D_DoomMain (void)
                    "STRIFE:  Quest for the Sigil v1.31"
                    "                                 ");
 
-    printf(title);
+    printf("\n%s\n", title);
 
     if (devparm)
     {
@@ -1449,7 +1456,7 @@ void D_DoomMain (void)
 
     // Check and print which version is executed.
 
-    if (registered && devparm)
+    if (isregistered && devparm)
     {
         D_DrawText("	retail version.\n");
         D_DrawText("===========================================================================\n"
@@ -1550,7 +1557,6 @@ void D_DoomMain (void)
         {
             D_DrawText("External statistics registered.\n");
         }
-        D_RedrawTitle();
     }
 
     D_IntroTick();
@@ -1588,7 +1594,7 @@ void D_DoomMain (void)
     p = M_CheckParm("-loadgame");
     if (p && p < myargc - 1)
     {
-        G_LoadGame(atoi(myargv[p + 1][0]));
+        M_LoadSelect(atoi(myargv[p + 1]));
     }
 
     D_IntroTick();

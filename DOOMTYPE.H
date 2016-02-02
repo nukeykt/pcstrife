@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -46,5 +47,7 @@ typedef unsigned char byte;
 // Max negative 32-bit integer.
 #define MININT		((int)0x80000000)	
 #define MINLONG		((long)0x80000000)
+
+#define arrlen(array) (sizeof(array) / sizeof(*array))
 
 #endif

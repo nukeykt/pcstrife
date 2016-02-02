@@ -1,6 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
+// Copyright (C) 2005-2014 Simon Howard
 // Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
@@ -22,6 +23,8 @@
 
 #include "doomdef.h"
 #include "d_event.h"
+#include "tables.h"
+#include "d_ticcmd.h"
 
 
 
@@ -30,12 +33,14 @@
 //
 void G_DeathMatchSpawnPlayer (int playernum);
 
-void G_InitNew (skill_t skill, int episode, int map);
+// [STRIFE] Removed episode parameter
+void G_InitNew (skill_t skill, int map);
 
 // Can be called by the startup code or M_Responder.
 // A normal game starts at map 1,
 // but a warp test can start elsewhere
-void G_DeferedInitNew (skill_t skill, int episode, int map);
+// [STRIFE] Removed episode parameter
+void G_DeferedInitNew (skill_t skill, int map);
 
 void G_DeferedPlayDemo (char* demo);
 
@@ -43,7 +48,7 @@ void G_DeferedPlayDemo (char* demo);
 // calls P_SetupLevel or W_EnterWorld.
 void G_LoadGame (char* name);
 
-void G_DoLoadGame (void);
+void G_DoLoadGame (boolean userload);
 
 // Called by M_Responder.
 void G_SaveGame (int slot, char* description);
@@ -57,15 +62,26 @@ void G_PlayDemo (char* name);
 void G_TimeDemo (char* name);
 boolean G_CheckDemoStatus (void);
 
-void G_ExitLevel (void);
+void G_RiftExitLevel(int map, int spot, angle_t angle); // [STRIFE]
+void G_ExitLevel (int dest);
 void G_SecretExitLevel (void);
+//void G_SecretExitLevel (void);
 
-void G_WorldDone (void);
+void G_StartFinale(void); // [STRIFE]
+
+//void G_WorldDone (void);
+
+boolean G_RiftCheat(int riftSpotNum); // [STRIFE]
+
+// Read current data from inputs and build a player movement command.
+
+void G_BuildTiccmd (ticcmd_t *cmd);
 
 void G_Ticker (void);
 boolean G_Responder (event_t*	ev);
 
 void G_ScreenShot (void);
 
+void G_ReadCurrent(char *path);
 
 #endif

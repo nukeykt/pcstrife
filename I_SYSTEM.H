@@ -47,7 +47,7 @@ int I_GetTime (void);
 // are performed here (joystick reading).
 // Can call D_PostEvent.
 //
-void I_StartFrame (void);
+void I_JoystickEvents(void);
 
 
 //
@@ -81,9 +81,6 @@ void I_Tactile (int on, int off, int total);
 
 
 void I_Error (char *error, ...);
-
-void I_DPMI_Lock(void *data, unsigned int size);
-void I_DPMI_Unlock(void *data, unsigned int size);
 
 
 #endif

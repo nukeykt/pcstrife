@@ -1,6 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
+// Copyright (C) 2005-2014 Simon Howard
 // Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
@@ -27,6 +28,8 @@
 #include "doomdef.h"
 
 #include "f_wipe.h"
+
+#include "r_draw.h"
 
 //
 //                       SCREEN WIPE PACKAGE
@@ -72,6 +75,13 @@ wipe_initColorXForm
     return 0;
 }
 
+//
+// wipe_doColorXForm
+//
+// haleyjd 08/26/10: [STRIFE]
+// * Rogue modified the unused ColorXForm wipe in-place in order to implement 
+//   their distinctive crossfade wipe.
+//
 int
 wipe_doColorXForm
 ( int	width,
@@ -81,37 +91,24 @@ wipe_doColorXForm
     boolean	changed;
     byte*	w;
     byte*	e;
-    int		newval;
+    int i;
 
     changed = false;
     w = wipe_scr;
     e = wipe_scr_end;
     
-    while (w!=wipe_scr+width*height)
+    i = width*height;
+
+    while (i)
     {
-	if (*w != *e)
-	{
-	    if (*w > *e)
-	    {
-		newval = *w - ticks;
-		if (newval < *e)
-		    *w = *e;
-		else
-		    *w = newval;
-		changed = true;
-	    }
-	    else if (*w < *e)
-	    {
-		newval = *w + ticks;
-		if (newval > *e)
-		    *w = *e;
-		else
-		    *w = newval;
-		changed = true;
-	    }
-	}
-	w++;
-	e++;
+        if (*w != *e)
+        {
+            *w = xlatab[(*w << 8) | *e];
+            changed = true;
+        }
+        w++;
+        e++;
+        i--;
     }
 
     return !changed;

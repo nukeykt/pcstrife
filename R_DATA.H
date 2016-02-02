@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -23,6 +24,7 @@
 
 #include "r_defs.h"
 #include "r_state.h"
+#include "p_spec.h"    // villsa [STRIFE]
 
 // Retrieve column data for span blitting.
 byte*
@@ -46,5 +48,6 @@ int R_FlatNumForName (char* name);
 // returns the texture number for the texture name.
 int R_TextureNumForName (char *name);
 int R_CheckTextureNumForName (char *name);
+void R_SoundNumForDoor(vldoor_t* door); // villsa [STRIFE]
 
 #endif

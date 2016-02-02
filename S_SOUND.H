@@ -31,7 +31,8 @@
 void
 S_Init
 ( int		sfxVolume,
-  int		musicVolume );
+  int		musicVolume,
+  int       voiceVolume );
 
 
 
@@ -93,5 +94,9 @@ void S_UpdateSounds(void* listener);
 void S_SetMusicVolume(int volume);
 void S_SetSfxVolume(int volume);
 
+void S_SetVoiceVolume(int volume);
+
+
+extern int snd_VoiceVolume;
 
 #endif

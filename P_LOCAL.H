@@ -25,7 +25,7 @@
 #include "r_local.h"
 #endif
 
-#define FLOATSPEED		(FRACUNIT*4)
+#define FLOATSPEED		(FRACUNIT*5)    // villsa [STRIFE] change to 5 (was 4)
 
 
 #define MAXHEALTH		100
@@ -51,8 +51,9 @@
 #define GRAVITY		FRACUNIT
 #define MAXMOVE		(30*FRACUNIT)
 
-#define USERANGE		(64*FRACUNIT)
+#define USERANGE        (64*FRACUNIT)
 #define MELEERANGE		(64*FRACUNIT)
+#define PLAYERMELEERANGE	(80*FRACUNIT) // haleyjd [STRIFE] New constant
 #define MISSILERANGE	(32*64*FRACUNIT)
 
 // follow a player exlusively for 3 seconds
@@ -84,7 +85,14 @@ void P_DropWeapon (player_t* player);
 //
 // P_USER
 //
-void	P_PlayerThink (player_t* player);
+
+// haleyjd 09/15/10: externalized
+#define INVERSECOLORMAP         32
+void    P_PlayerThink (player_t* player);
+// haleyjd 08/30/10: [STRIFE] Needed externally
+void    P_Thrust(player_t* player, angle_t angle, fixed_t move);
+// villsa [STRIFE]
+char*   P_RemoveInventoryItem(player_t *player, int slot, int amount);
 
 
 //
@@ -111,21 +119,30 @@ P_SpawnMobj
   fixed_t	z,
   mobjtype_t	type );
 
-void 	P_RemoveMobj (mobj_t* th);
-boolean	P_SetMobjState (mobj_t* mobj, statenum_t state);
-void 	P_MobjThinker (mobj_t* mobj);
+void    P_RemoveMobj (mobj_t* th);
+boolean P_SetMobjState (mobj_t* mobj, statenum_t state);
+void    P_MobjThinker (mobj_t* mobj);
 
-void	P_SpawnPuff (fixed_t x, fixed_t y, fixed_t z);
-void 	P_SpawnBlood (fixed_t x, fixed_t y, fixed_t z, int damage);
+void    P_SpawnPuff (fixed_t x, fixed_t y, fixed_t z);
+mobj_t* P_SpawnSparkPuff(fixed_t x, fixed_t y, fixed_t z);  // villsa [STRIFE]
+void    P_SpawnBlood (fixed_t x, fixed_t y, fixed_t z, int damage);
 mobj_t* P_SpawnMissile (mobj_t* source, mobj_t* dest, mobjtype_t type);
-void	P_SpawnPlayerMissile (mobj_t* source, mobjtype_t type);
+mobj_t* P_SpawnFacingMissile(mobj_t* source, mobj_t* target, mobjtype_t type);  // villsa [STRIFE]
+mobj_t* P_SpawnPlayerMissile (mobj_t* source, mobjtype_t type);
+mobj_t* P_SpawnMortar(mobj_t *source, mobjtype_t type); // villsa [STRIFE]
+void    P_ExplodeMissile(mobj_t* mo); // villsa [STRIFE]
 
 
 //
 // P_ENEMY
 //
 void P_NoiseAlert (mobj_t* target, mobj_t* emmiter);
-
+void P_DoPunchAlert(mobj_t *puncher, mobj_t *punchee);  // villsa [STRIFE]
+void A_BodyParts(mobj_t *actor);                        // haleyjd: [STRIFE]
+void A_AlertSpectreC(mobj_t* actor);
+void A_FaceTarget(mobj_t* actor);
+void P_FreePrisoners(mobj_t *actor);
+void P_DestroyConverter(mobj_t *actor);
 
 //
 // P_MAPUTL
@@ -203,18 +220,20 @@ extern fixed_t		tmfloorz;
 extern fixed_t		tmceilingz;
 
 
-extern	line_t*		ceilingline;
+extern  line_t*		ceilingline;
+extern line_t      *blockingline; // [STRIFE] New global
 
 boolean P_CheckPosition (mobj_t *thing, fixed_t x, fixed_t y);
 boolean P_TryMove (mobj_t* thing, fixed_t x, fixed_t y);
+boolean P_CheckPositionZ(mobj_t* thing, fixed_t z);   // villsa [STRIFE]
 boolean P_TeleportMove (mobj_t* thing, fixed_t x, fixed_t y);
-void	P_SlideMove (mobj_t* mo);
+void    P_SlideMove (mobj_t* mo);
 boolean P_CheckSight (mobj_t* t1, mobj_t* t2);
-void 	P_UseLines (player_t* player);
+void    P_UseLines (player_t* player);
 
 boolean P_ChangeSector (sector_t* sector, boolean crunch);
 
-extern mobj_t*	linetarget;	// who got hit (or NULL)
+extern mobj_t*  linetarget;	// who got hit (or NULL)
 
 fixed_t
 P_AimLineAttack

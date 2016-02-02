@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -20,6 +21,8 @@
 
 #include <alloca.h>
 
+#include "d_main.h"
+
 #include "i_system.h"
 #include "z_zone.h"
 
@@ -35,6 +38,10 @@
 #include "r_sky.h"
 
 #include "r_data.h"
+
+#include "sounds.h" // villsa [STRIFE]
+
+#include "info.h"
 
 //
 // Graphics.
@@ -59,8 +66,8 @@ typedef struct
     short	originx;
     short	originy;
     short	patch;
-    short	stepdir;
-    short	colormap;
+    //short	stepdir;    // villsa [STRIFE] removed
+    //short	colormap;    // villsa [STRIFE] removed
 } mappatch_t;
 
 
@@ -75,7 +82,7 @@ typedef struct
     boolean		masked;	
     short		width;
     short		height;
-    void		**columndirectory;	// OBSOLETE
+    //void		**columndirectory;	// villsa [STRIFE] removed
     short		patchcount;
     mappatch_t	patches[1];
 } maptexture_t;
@@ -293,6 +300,7 @@ void R_GenerateLookup (int texnum)
     int			i;
     short*		collump;
     unsigned short*	colofs;
+    char string[256];
 	
     texture = textures[texnum];
 
@@ -338,8 +346,9 @@ void R_GenerateLookup (int texnum)
     {
 	if (!patchcount[x])
 	{
-	    printf ("R_GenerateLookup: column without a patch (%s)\n",
+        sprintf(string, "R_GenerateLookup: column without a patch (%s)\n",
 		    texture->name);
+        D_DrawText(string);
 	    return;
 	}
 	// I_Error ("R_GenerateLookup: column without a patch");
@@ -481,19 +490,28 @@ void R_InitTextures (void)
     temp1 = W_GetNumForName ("S_START");  // P_???????
     temp2 = W_GetNumForName ("S_END") - 1;
     temp3 = ((temp2-temp1+63)/64) + ((numtextures+63)/64);
-    printf("[");
-    for (i = 0; i < temp3; i++)
-	printf(" ");
-    printf("         ]");
-    for (i = 0; i < temp3; i++)
-	printf("\x8");
-    printf("\x8\x8\x8\x8\x8\x8\x8\x8\x8\x8");	
-	
+    // haleyjd 20110206 [STRIFE]: box is in devparm only
+    if (devparm)
+    {
+        printf("[");
+        for (i = 0; i < temp3; i++)
+            printf(" ");
+        printf("      ]");
+        for (i = 0; i < temp3; i++)
+            printf("\x8");
+        printf("\x8\x8\x8\x8\x8\x8\x8");
+    }
+
     for (i=0 ; i<numtextures ; i++, directory++)
     {
-	if (!(i&63))
-	    printf (".");
-
+	if (!(i&255))
+    {
+        // [STRIFE]: tick intro if not in devparm
+        if (devparm)
+            D_DrawText(".");
+        else
+            D_IntroTick();
+    }
 	if (i == numtextures1)
 	{
 	    // Start looking in second texture file.
@@ -551,9 +569,18 @@ void R_InitTextures (void)
 	Z_Free (maptex2);
     
     // Precalculate whatever possible.	
-    for (i=0 ; i<numtextures ; i++)
-	R_GenerateLookup (i);
-    
+    for (i = 0; i < numtextures; i++)
+    {
+        // [STRIFE]: tick intro
+        if (!(i & 63))
+        {
+            if (devparm)
+                D_DrawText(".");
+            else
+                D_IntroTick();
+        }
+        R_GenerateLookup(i);
+    }
     // Create translation table for global animation.
     texturetranslation = Z_Malloc ((numtextures+1)*4, PU_STATIC, 0);
     
@@ -604,7 +631,13 @@ void R_InitSpriteLumps (void)
     for (i=0 ; i< numspritelumps ; i++)
     {
 	if (!(i&63))
-	    printf (".");
+    {
+        // [STRIFE] tick intro if not in devparm
+        if (devparm)
+            D_DrawText(".");
+        else
+            D_IntroTick();
+    }
 
 	patch = W_CacheLumpNum (firstspritelump+i, PU_CACHE);
 	spritewidth[i] = SHORT(patch->width)<<FRACBITS;
@@ -642,12 +675,17 @@ void R_InitColormaps (void)
 void R_InitData (void)
 {
     R_InitTextures ();
-    printf (".");
+    if (!devparm)
+        D_IntroTick(); // [STRIFE] tick intro
     R_InitFlats ();
-    printf (".");
+    if (!devparm)
+        D_IntroTick();
     R_InitSpriteLumps ();
-    printf (".");
+    if (!devparm)
+        D_IntroTick();
     R_InitColormaps ();
+    if (!devparm)
+        D_IntroTick();
 }
 
 
@@ -718,14 +756,79 @@ int	R_TextureNumForName (char* name)
 
 
 
+//
+// R_SoundNumForDoor
+//
+// villsa [STRIFE] - new function
+// Set sounds associated with door though why
+// on earth is this function placed here?
+//
+void R_SoundNumForDoor(vldoor_t* door)
+{
+    int         i;
+    texture_t   *texture;
+    char        name[8];
+
+    // set default sounds
+    door->opensound = sfx_drsmto;
+    door->closesound = sfx_drsmtc;
+
+    for (i = 0; i < door->sector->linecount; i++)
+    {
+        if (!(door->sector->lines[i]->flags & ML_TWOSIDED))
+            continue;
+
+        texture = textures[sides[door->sector->lines[i]->sidenum[0]].toptexture];
+        memcpy(name, texture->name, 8);
+
+        if (strncasecmp(name, "DOR", 3))
+            continue;
+
+        switch (name[3])
+        {
+        case 'S':
+            door->opensound = sfx_drston;
+            door->closesound = sfx_drston;
+            return;
+
+        case 'M':
+            if (name[4] == 'L')
+            {
+                door->opensound = sfx_drlmto;
+                door->closesound = sfx_drlmtc;
+            }
+            else
+            {
+                door->opensound = sfx_drsmto;
+                door->closesound = sfx_drsmtc;
+            }
+            return;
+
+        case 'W':
+            if (name[4] == 'L')
+            {
+                door->opensound = sfx_drlwud;
+                door->closesound = sfx_drlwud;
+            }
+            else
+            {
+                door->opensound = sfx_drswud;
+                door->closesound = sfx_drswud;
+            }
+            return;
+        }
+    }
+}
+
+
 
 //
 // R_PrecacheLevel
 // Preloads all relevant graphics for the level.
 //
-int		flatmemory;
-int		texturememory;
-int		spritememory;
+//int		flatmemory;
+//int		texturememory;
+//int		spritememory;
 
 void R_PrecacheLevel (void)
 {
@@ -755,14 +858,14 @@ void R_PrecacheLevel (void)
 	flatpresent[sectors[i].ceilingpic] = 1;
     }
 	
-    flatmemory = 0;
+    //flatmemory = 0;
 
     for (i=0 ; i<numflats ; i++)
     {
 	if (flatpresent[i])
 	{
 	    lump = firstflat + i;
-	    flatmemory += lumpinfo[lump].size;
+	    //flatmemory += lumpinfo[lump].size;
 	    W_CacheLumpNum(lump, PU_CACHE);
 	}
     }
@@ -786,7 +889,7 @@ void R_PrecacheLevel (void)
     //  name.
     texturepresent[skytexture] = 1;
 	
-    texturememory = 0;
+    //texturememory = 0;
     for (i=0 ; i<numtextures ; i++)
     {
 	if (!texturepresent[i])
@@ -797,23 +900,23 @@ void R_PrecacheLevel (void)
 	for (j=0 ; j<texture->patchcount ; j++)
 	{
 	    lump = texture->patches[j].patch;
-	    texturememory += lumpinfo[lump].size;
+	    //texturememory += lumpinfo[lump].size;
 	    W_CacheLumpNum(lump , PU_CACHE);
 	}
     }
     
     // Precache sprites.
-    spritepresent = alloca(numsprites);
-    memset (spritepresent,0, numsprites);
+    spritepresent = alloca(NUMSPRITES);
+    memset (spritepresent,0, NUMSPRITES);
 	
     for (th = thinkercap.next ; th != &thinkercap ; th=th->next)
     {
-	if (th->function.acp1 == (actionf_p1)P_MobjThinker)
+	if (th->function == P_MobjThinker)
 	    spritepresent[((mobj_t *)th)->sprite] = 1;
     }
 	
-    spritememory = 0;
-    for (i=0 ; i<numsprites ; i++)
+    //spritememory = 0;
+    for (i=0 ; i<NUMSPRITES; i++)
     {
 	if (!spritepresent[i])
 	    continue;
@@ -824,13 +927,9 @@ void R_PrecacheLevel (void)
 	    for (k=0 ; k<8 ; k++)
 	    {
 		lump = firstspritelump + sf->lump[k];
-		spritememory += lumpinfo[lump].size;
+		//spritememory += lumpinfo[lump].size;
 		W_CacheLumpNum(lump , PU_CACHE);
 	    }
 	}
     }
 }
-
-
-
-

@@ -1,6 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
+// Copyright (C) 2005-2014 Simon Howard
 // Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
@@ -24,6 +25,7 @@
 // Needs fixed point, and BAM angles.
 #include "m_fixed.h"
 #include "tables.h"
+#include "d_player.h"
 
 
 //
@@ -53,17 +55,26 @@ typedef enum
 {
     ps_weapon,
     ps_flash,
+    ps_targcenter,  // villsa [STRIFE]
+    ps_targleft,    // villsa [STRIFE]
+    ps_targright,   // villsa [STRIFE]
     NUMPSPRITES
 
 } psprnum_t;
 
 typedef struct
 {
-    state_t*	state;	// a NULL state means not active
-    int		tics;
-    fixed_t	sx;
-    fixed_t	sy;
+    state_t*    state;	// a NULL state means not active
+    int         tics;
+    fixed_t     sx;
+    fixed_t     sy;
 
 } pspdef_t;
+
+
+typedef struct player_s *playerptr;
+
+// haleyjd [STRIFE] Exported
+void P_SetPsprite(playerptr player, int position, statenum_t stnum);
 
 #endif

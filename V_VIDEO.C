@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -31,6 +32,8 @@
 #include "m_bbox.h"
 #include "m_swap.h"
 
+#include "w_wad.h"
+#include "z_zone.h"
 #include "v_video.h"
 
 
@@ -194,7 +197,7 @@ V_CopyRect
 // V_DrawPatch
 // Masks a column based masked pic to the screen. 
 //
-void
+boolean
 V_DrawPatch
 ( int		x,
   int		y,
@@ -210,59 +213,55 @@ V_DrawPatch
     byte*	source; 
     int		w; 
 	 
-    y -= SHORT(patch->topoffset); 
-    x -= SHORT(patch->leftoffset); 
-#ifdef RANGECHECK 
+    y -= SHORT(patch->topoffset);
+    x -= SHORT(patch->leftoffset);
     if (x<0
-	||x+SHORT(patch->width) >SCREENWIDTH
-	|| y<0
-	|| y+SHORT(patch->height)>SCREENHEIGHT 
-	|| (unsigned)scrn>4)
+        || x + SHORT(patch->width) >SCREENWIDTH
+        || y<0
+        || y + SHORT(patch->height)>SCREENHEIGHT
+        || (unsigned)scrn>4)
     {
-      fprintf( stderr, "Patch at %d,%d exceeds LFB\n", x,y );
-      // No I_Error abort - what is up with TNT.WAD?
-      fprintf( stderr, "V_DrawPatch: bad patch (ignored)\n");
-      return;
+        return false;
     }
-#endif 
- 
+
     if (!scrn)
-	V_MarkRect (x, y, SHORT(patch->width), SHORT(patch->height)); 
+        V_MarkRect(x, y, SHORT(patch->width), SHORT(patch->height));
 
-    col = 0; 
-    desttop = screens[scrn]+y*SCREENWIDTH+x; 
-	 
-    w = SHORT(patch->width); 
+    col = 0;
+    desttop = screens[scrn] + y*SCREENWIDTH + x;
 
-    for ( ; col<w ; x++, col++, desttop++)
-    { 
-	column = (column_t *)((byte *)patch + LONG(patch->columnofs[col])); 
- 
-	// step through the posts in a column 
-	while (column->topdelta != 0xff ) 
-	{ 
-	    source = (byte *)column + 3; 
-	    dest = desttop + column->topdelta*SCREENWIDTH; 
-	    count = column->length; 
-			 
-	    while (count--) 
-	    { 
-		*dest = *source++; 
-		dest += SCREENWIDTH; 
-	    } 
-	    column = (column_t *)(  (byte *)column + column->length 
-				    + 4 ); 
-	} 
-    }			 
-} 
- 
+    w = SHORT(patch->width);
+
+    for (; col<w; x++, col++, desttop++)
+    {
+        column = (column_t *)((byte *)patch + LONG(patch->columnofs[col]));
+
+        // step through the posts in a column 
+        while (column->topdelta != 0xff)
+        {
+            source = (byte *)column + 3;
+            dest = desttop + column->topdelta*SCREENWIDTH;
+            count = column->length;
+
+            while (count--)
+            {
+                *dest = *source++;
+                dest += SCREENWIDTH;
+            }
+            column = (column_t *)((byte *)column + column->length
+                + 4);
+        }
+    }
+    return true;
+}
+
 //
-// V_DrawPatchFlipped 
-// Masks a column based masked pic to the screen.
-// Flips horizontally, e.g. to mirror face.
+// V_DrawXlaPatch
 //
-void
-V_DrawPatchFlipped
+// villsa [STRIFE] Masks a column based translucent masked pic to the screen.
+//
+boolean
+V_DrawXlaPatch
 ( int		x,
   int		y,
   int		scrn,
@@ -276,58 +275,54 @@ V_DrawPatchFlipped
     byte*	dest;
     byte*	source; 
     int		w; 
-	 
-    y -= SHORT(patch->topoffset); 
-    x -= SHORT(patch->leftoffset); 
-#ifdef RANGECHECK 
+
+    y -= SHORT(patch->topoffset);
+    x -= SHORT(patch->leftoffset);
     if (x<0
-	||x+SHORT(patch->width) >SCREENWIDTH
-	|| y<0
-	|| y+SHORT(patch->height)>SCREENHEIGHT 
-	|| (unsigned)scrn>4)
+        || x + SHORT(patch->width) >SCREENWIDTH
+        || y<0
+        || y + SHORT(patch->height)>SCREENHEIGHT
+        || (unsigned)scrn>4)
     {
-      fprintf( stderr, "Patch origin %d,%d exceeds LFB\n", x,y );
-      I_Error ("Bad V_DrawPatch in V_DrawPatchFlipped");
+        return false;
     }
-#endif 
- 
+
     if (!scrn)
-	V_MarkRect (x, y, SHORT(patch->width), SHORT(patch->height)); 
+        V_MarkRect(x, y, SHORT(patch->width), SHORT(patch->height));
 
-    col = 0; 
-    desttop = screens[scrn]+y*SCREENWIDTH+x; 
-	 
-    w = SHORT(patch->width); 
+    col = 0;
+    desttop = screens[scrn] + y*SCREENWIDTH + x;
 
-    for ( ; col<w ; x++, col++, desttop++) 
-    { 
-	column = (column_t *)((byte *)patch + LONG(patch->columnofs[w-1-col])); 
- 
-	// step through the posts in a column 
-	while (column->topdelta != 0xff ) 
-	{ 
-	    source = (byte *)column + 3; 
-	    dest = desttop + column->topdelta*SCREENWIDTH; 
-	    count = column->length; 
-			 
-	    while (count--) 
-	    { 
-		*dest = *source++; 
-		dest += SCREENWIDTH; 
-	    } 
-	    column = (column_t *)(  (byte *)column + column->length 
-				    + 4 ); 
-	} 
-    }			 
-} 
- 
+    w = SHORT(patch->width);
 
+    for (; col<w; x++, col++, desttop++)
+    {
+        column = (column_t *)((byte *)patch + LONG(patch->columnofs[col]));
+
+        // step through the posts in a column 
+        while (column->topdelta != 0xff)
+        {
+            source = (byte *)column + 3;
+            dest = desttop + column->topdelta*SCREENWIDTH;
+            count = column->length;
+
+            while (count--)
+            {
+                *dest = xlatab[*dest + (*source << 8)];
+                dest += SCREENWIDTH;
+            }
+            column = (column_t *)((byte *)column + column->length
+                + 4);
+        }
+    }
+    return true;
+}
 
 //
 // V_DrawPatchDirect
 // Draws directly to the screen on the pc. 
 //
-void
+boolean
 V_DrawPatchDirect
 ( int		x,
   int		y,
@@ -345,48 +340,120 @@ V_DrawPatchDirect
     y -= SHORT(patch->topoffset); 
     x -= SHORT(patch->leftoffset); 
 
-#ifdef RANGECHECK 
     if (x<0
-	||x+SHORT(patch->width) >SCREENWIDTH
-	|| y<0
-	|| y+SHORT(patch->height)>SCREENHEIGHT 
-	|| (unsigned)scrn>4)
+        || x + SHORT(patch->width) >SCREENWIDTH
+        || y<0
+        || y + SHORT(patch->height)>SCREENHEIGHT
+        || (unsigned)scrn>4)
     {
-	I_Error ("Bad V_DrawPatchDirect");
+        return false;
     }
-#endif 
- 
-    //	V_MarkRect (x, y, SHORT(patch->width), SHORT(patch->height)); 
-    desttop = destscreen + y*SCREENWIDTH/4 + (x>>2); 
-	 
-    w = SHORT(patch->width); 
-    for ( col = 0 ; col<w ; col++) 
-    { 
-	outp (SC_INDEX+1,1<<(x&3)); 
-	column = (column_t *)((byte *)patch + LONG(patch->columnofs[col])); 
- 
-	// step through the posts in a column 
-	 
-	while (column->topdelta != 0xff ) 
-	{ 
-	    source = (byte *)column + 3; 
-	    dest = desttop + column->topdelta*SCREENWIDTH/4; 
-	    count = column->length; 
- 
-	    while (count--) 
-	    { 
-		*dest = *source++; 
-		dest += SCREENWIDTH/4; 
-	    } 
-	    column = (column_t *)(  (byte *)column + column->length 
-				    + 4 ); 
-	} 
-	if ( ((++x)&3) == 0 ) 
-	    desttop++;	// go to next byte, not next plane 
-    }
-} 
- 
 
+    //	V_MarkRect (x, y, SHORT(patch->width), SHORT(patch->height)); 
+    desttop = destscreen + y*SCREENWIDTH / 4 + (x >> 2);
+
+    w = SHORT(patch->width);
+    for (col = 0; col<w; col++)
+    {
+        outp(SC_INDEX + 1, 1 << (x & 3));
+        column = (column_t *)((byte *)patch + LONG(patch->columnofs[col]));
+
+        // step through the posts in a column 
+
+        while (column->topdelta != 0xff)
+        {
+            source = (byte *)column + 3;
+            dest = desttop + column->topdelta*SCREENWIDTH / 4;
+            count = column->length;
+
+            while (count--)
+            {
+                *dest = *source++;
+                dest += SCREENWIDTH / 4;
+            }
+            column = (column_t *)((byte *)column + column->length
+                + 4);
+        }
+        if (((++x) & 3) == 0)
+            desttop++;	// go to next byte, not next plane 
+    }
+    return true;
+}
+
+
+boolean
+V_DrawXlaPatchDirect
+(   int		x,
+    int		y,
+    int		scrn,
+    patch_t*	patch)
+{
+    int		count;
+    int		col;
+    column_t*	column;
+    byte*	desttop;
+    byte*	dest;
+    byte*	source;
+    int		w;
+
+    y -= SHORT(patch->topoffset);
+    x -= SHORT(patch->leftoffset);
+
+    if (x<0
+        || x + SHORT(patch->width) >SCREENWIDTH
+        || y<0
+        || y + SHORT(patch->height)>SCREENHEIGHT
+        || (unsigned)scrn>4)
+    {
+        return false;
+    }
+
+    //	V_MarkRect (x, y, SHORT(patch->width), SHORT(patch->height)); 
+    desttop = destscreen + y*SCREENWIDTH / 4 + (x >> 2);
+
+    w = SHORT(patch->width);
+    for (col = 0; col<w; col++)
+    {
+        outpw(GC_INDEX, GC_READMAP + ((x & 3) << 8));
+        outp(SC_INDEX + 1, 1 << (x & 3));
+        column = (column_t *)((byte *)patch + LONG(patch->columnofs[col]));
+
+        // step through the posts in a column 
+
+        while (column->topdelta != 0xff)
+        {
+            source = (byte *)column + 3;
+            dest = desttop + column->topdelta*SCREENWIDTH / 4;
+            count = column->length;
+
+            while (count--)
+            {
+                *dest = xlatab[*dest + (*source << 8)];
+                dest += SCREENWIDTH / 4;
+            }
+            column = (column_t *)((byte *)column + column->length
+                + 4);
+        }
+        if (((++x) & 3) == 0)
+            desttop++;	// go to next byte, not next plane 
+    }
+    return true;
+}
+
+typedef struct pic_s {
+    short width;
+    short height;
+    short x;
+    short y;
+    byte *data;
+} pic_t;
+
+void V_DrawPic(char *name)
+{
+    pic_t *pic;
+    pic = (pic_t*)W_CacheLumpName(name, PU_CACHE);
+    V_DrawBlock(pic->x, pic->y, 0, pic->width, pic->height, pic->data);
+}
 
 //
 // V_DrawBlock

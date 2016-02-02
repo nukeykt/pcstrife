@@ -1,6 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
+// Copyright (C) 2005-2014 Simon Howard
 // Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
@@ -41,7 +42,9 @@ planefunction_t		ceilingfunc;
 //
 
 // Here comes the obnoxious "visplane".
-#define MAXVISPLANES	128
+
+// haleyjd 08/29/10: [STRIFE] MAXVISPLANES increased to 200
+#define MAXVISPLANES	200
 visplane_t		visplanes[MAXVISPLANES];
 visplane_t*		lastvisplane;
 visplane_t*		floorplane;
@@ -85,15 +88,6 @@ fixed_t			cachedxstep[SCREENHEIGHT];
 fixed_t			cachedystep[SCREENHEIGHT];
 
 
-
-//
-// R_InitPlanes
-// Only at game startup.
-//
-void R_InitPlanes (void)
-{
-  // Doh!
-}
 
 
 //
@@ -165,8 +159,7 @@ R_MapPlane
     ds_x1 = x1;
     ds_x2 = x2;
 
-    // high or low detail
-    spanfunc ();	
+    R_DrawSpan();
 }
 
 
@@ -387,7 +380,7 @@ void R_DrawPlanes (void)
 	// sky flat
 	if (pl->picnum == skyflatnum)
 	{
-	    dc_iscale = pspriteiscale>>detailshift;
+	    dc_iscale = pspriteiscale;
 	    
 	    // Sky is allways drawn full bright,
 	    //  i.e. colormaps[0] is used.

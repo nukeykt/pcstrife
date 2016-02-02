@@ -1,6 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
+// Copyright (C) 2005-2014 Simon Howard
 // Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
@@ -35,6 +36,9 @@ typedef struct
     short	consistancy;	// checks for net game
     byte	chatchar;
     byte	buttons;
+    // villsa - Strife specific:
+    byte    buttons2;
+    int     inventory;
 } ticcmd_t;
 
 

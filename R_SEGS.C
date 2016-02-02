@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -146,6 +147,14 @@ R_RenderMaskedSegRange
 			
     if (fixedcolormap)
 	dc_colormap = fixedcolormap;
+
+    // villsa [STRIFE] render as transparent (25% or 75%?)
+    if (curline->linedef->flags & ML_TRANSPARENT1)
+        colfunc = fuzzcolfunc;
+
+    // villsa [STRIFE] render as transparent (25% or 75%?)
+    if (curline->linedef->flags & ML_TRANSPARENT2)
+        colfunc = R_DrawMVisTLColumn;
     
     // draw the columns
     for (dc_x = x1 ; dc_x <= x2 ; dc_x++)
@@ -170,11 +179,13 @@ R_RenderMaskedSegRange
 	    col = (column_t *)( 
 		(byte *)R_GetColumn(texnum,maskedtexturecol[dc_x]) -3);
 			
-	    R_DrawMaskedColumn (col);
+	    R_DrawMaskedColumn (col, 0);
 	    maskedtexturecol[dc_x] = MAXSHORT;
 	}
 	spryscale += rw_scalestep;
     }
+
+    colfunc = basecolfunc;  // villsa [STRIFE] reset draw routines
 	
 }
 
@@ -732,4 +743,3 @@ R_StoreWallRange
     }
     ds_p++;
 }
-

@@ -81,7 +81,7 @@ extern lighttable_t*	fixedcolormap;
 // Blocky/low detail mode.
 //B remove this?
 //  0 = high, 1 = low
-extern	int		detailshift;	
+//extern	int		detailshift;	
 
 
 //
@@ -92,7 +92,7 @@ extern void		(*colfunc) (void);
 extern void		(*basecolfunc) (void);
 extern void		(*fuzzcolfunc) (void);
 // No shadow effects on floors.
-extern void		(*spanfunc) (void);
+//extern void		(*spanfunc) (void);
 
 
 //
@@ -153,6 +153,6 @@ void R_RenderPlayerView (player_t *player);
 void R_Init (void);
 
 // Called by M_Responder.
-void R_SetViewSize (int blocks, int detail);
+void R_SetViewSize (int blocks);
 
 #endif

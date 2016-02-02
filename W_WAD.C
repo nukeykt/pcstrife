@@ -1,7 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -25,6 +25,8 @@
 #include <sys/stat.h>
 
 #include "doomtype.h"
+#include "doomstat.h"
+#include "d_main.h"
 #include "m_swap.h"
 #include "i_system.h"
 #include "i_video.h"
@@ -113,6 +115,11 @@ void W_AddFile (char *filename)
     filelump_t*		fileinfo;
     filelump_t		singleinfo;
     int			storehandle;
+    char string[60];
+    boolean isrwad;
+    int lump;
+
+    isrwad = false;
     
     // open the file and add to directory
 
@@ -126,13 +133,19 @@ void W_AddFile (char *filename)
 		
     if ( (handle = open (filename,O_RDONLY | O_BINARY)) == -1)
     {
-	printf (" couldn't open %s\n",filename);
+	sprintf (string, "\tcouldn't open %s\n",filename);
+    D_DrawText(string);
 	return;
     }
 
-    printf (" adding %s\n",filename);
+    if (devparm)
+    {
+        sprintf(string, "\tadding %s\n", filename);
+        D_DrawText(string);
+    }
+
     startlump = numlumps;
-	
+
     if (strcmpi (filename+strlen(filename)-3 , "wad" ) )
     {
 	// single lump file
@@ -151,11 +164,16 @@ void W_AddFile (char *filename)
 	    // Homebrew levels?
 	    if (strncmp(header.identification,"PWAD",4))
 	    {
-		I_Error ("Wad file %s doesn't have IWAD "
-			 "or PWAD id\n", filename);
-	    }
-	    
-	    // ???modifiedgame = true;		
+            if (strncmp(header.identification, "RWAD", 4))
+            {
+                I_Error("Wad file %s doesn't have IWAD "
+                    "or PWAD id\n", filename);
+            }
+            else
+            {
+                isrwad = true;
+            }
+	    }	
 	}
 	header.numlumps = LONG(header.numlumps);
 	header.infotableofs = LONG(header.infotableofs);
@@ -163,26 +181,41 @@ void W_AddFile (char *filename)
 	fileinfo = alloca (length);
 	lseek (handle, header.infotableofs, SEEK_SET);
 	read (handle, fileinfo, length);
+    if(!isrwad)
 	numlumps += header.numlumps;
     }
-
-    
-    // Fill in lumpinfo
-    lumpinfo = realloc (lumpinfo, numlumps*sizeof(lumpinfo_t));
-
-    if (!lumpinfo)
-	I_Error ("Couldn't realloc lumpinfo");
-
-    lump_p = &lumpinfo[startlump];
 	
     storehandle = reloadname ? -1 : handle;
-	
-    for (i=startlump ; i<numlumps ; i++,lump_p++, fileinfo++)
+
+    if (isrwad)
     {
-	lump_p->handle = storehandle;
-	lump_p->position = LONG(fileinfo->filepos);
-	lump_p->size = LONG(fileinfo->size);
-	strncpy (lump_p->name, fileinfo->name, 8);
+        for (i = 0; i < header.numlumps; i++, fileinfo++)
+        {
+            lump = W_GetNumForName(fileinfo->name);
+            lump_p = &lumpinfo[lump];
+            lump_p->handle = storehandle;
+            lump_p->position = LONG(fileinfo->filepos);
+            lump_p->size = LONG(fileinfo->size);
+            strncpy(lump_p->name, fileinfo->name, 8);
+        }
+    }
+    else
+    {
+        // Fill in lumpinfo
+        lumpinfo = realloc(lumpinfo, numlumps*sizeof(lumpinfo_t));
+
+        if (!lumpinfo)
+            I_Error("Couldn't realloc lumpinfo");
+
+        lump_p = &lumpinfo[startlump];
+
+        for (i = startlump; i<numlumps; i++, lump_p++, fileinfo++)
+        {
+            lump_p->handle = storehandle;
+            lump_p->position = LONG(fileinfo->filepos);
+            lump_p->size = LONG(fileinfo->size);
+            strncpy(lump_p->name, fileinfo->name, 8);
+        }
     }
 	
     if (reloadname)
@@ -279,34 +312,6 @@ void W_InitMultipleFiles (char** filenames)
     memset (lumpcache,0, size);
 }
 
-
-
-
-//
-// W_InitFile
-// Just initialize from a single file.
-//
-void W_InitFile (char* filename)
-{
-    char*	names[2];
-
-    names[0] = filename;
-    names[1] = NULL;
-    W_InitMultipleFiles (names);
-}
-
-
-
-//
-// W_NumLumps
-//
-int W_NumLumps (void)
-{
-    return numlumps;
-}
-
-
-
 //
 // W_CheckNumForName
 // Returns -1 if name not found.
@@ -379,8 +384,8 @@ int W_GetNumForName (char* name)
 //
 int W_LumpLength (int lump)
 {
-    if (lump >= numlumps)
-	I_Error ("W_LumpLength: %i >= numlumps",lump);
+    //if (lump >= numlumps)
+	//I_Error ("W_LumpLength: %i >= numlumps",lump);
 
     return lumpinfo[lump].size;
 }
@@ -475,67 +480,3 @@ W_CacheLumpName
 {
     return W_CacheLumpNum (W_GetNumForName(name), tag);
 }
-
-
-//
-// W_Profile
-//
-int		info[2500][10];
-int		profilecount;
-
-void W_Profile (void)
-{
-    int		i;
-    memblock_t*	block;
-    void*	ptr;
-    char	ch;
-    FILE*	f;
-    int		j;
-    char	name[9];
-	
-	
-    for (i=0 ; i<numlumps ; i++)
-    {	
-	ptr = lumpcache[i];
-	if (!ptr)
-	{
-	    ch = ' ';
-	    continue;
-	}
-	else
-	{
-	    block = (memblock_t *) ( (byte *)ptr - sizeof(memblock_t));
-	    if (block->tag < PU_PURGELEVEL)
-		ch = 'S';
-	    else
-		ch = 'P';
-	}
-	info[i][profilecount] = ch;
-    }
-    profilecount++;
-	
-    f = fopen ("waddump.txt","w");
-    name[8] = 0;
-
-    for (i=0 ; i<numlumps ; i++)
-    {
-	memcpy (name,lumpinfo[i].name,8);
-
-	for (j=0 ; j<8 ; j++)
-	    if (!name[j])
-		break;
-
-	for ( ; j<8 ; j++)
-	    name[j] = ' ';
-
-	fprintf (f,"%s ",name);
-
-	for (j=0 ; j<profilecount ; j++)
-	    fprintf (f,"    %c",info[i][j]);
-
-	fprintf (f,"\n");
-    }
-    fclose (f);
-}
-
-

@@ -1,6 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
+// Copyright (C) 2005-2014 Simon Howard
 // Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
@@ -63,26 +64,44 @@ typedef enum
     // No damage, no health loss.
     CF_GODMODE		= 2,
     // Not really a cheat, just a debug aid.
-    CF_NOMOMENTUM	= 4
+    CF_NOMOMENTUM	= 4,
+    // villsa [STRIFE] new cheat
+    // set when on fire and disable inventory
+    CF_ONFIRE = 8,
+    // villsa [STRIFE] new cheat
+    // auto-use medkits
+    CF_AUTOHEALTH = 16
 
 } cheat_t;
 
+
+
+// haleyjd 08/30/10: [STRIFE]
+// Player Inventory Item Structure
+typedef struct inventory_s
+{
+    int sprite; // a sprite number
+    int type;   // a thing type
+    int amount; // amount being carried
+} inventory_t;
+
+#define NUMINVENTORY 32
 
 //
 // Extended player object info: player_t
 //
 typedef struct player_s
 {
-    mobj_t*		mo;
-    playerstate_t	playerstate;
-    ticcmd_t		cmd;
+    mobj_t*             mo;
+    playerstate_t       playerstate;
+    ticcmd_t            cmd;
 
     // Determine POV,
     //  including viewpoint bobbing during movement.
     // Focal origin above r.z
-    fixed_t		viewz;
+    fixed_t             viewz;
     // Base height above floor for viewz.
-    fixed_t		viewheight;
+    fixed_t             viewheight;
     // Bob/squat speed.
     fixed_t         	deltaviewheight;
     // bounded/scaled total momentum.
@@ -90,69 +109,91 @@ typedef struct player_s
 
     // This is only used between levels,
     // mo->health is used during levels.
-    int			health;	
-    int			armorpoints;
+    int                 health;	
+    //NUKE-TODO int -> short
+    int               armorpoints; // [STRIFE] Changed to short
     // Armor type is 0-2.
-    int			armortype;	
+    short               armortype; // [STRIFE] Changed to short
 
     // Power ups. invinc and invis are tic counters.
-    int			powers[NUMPOWERS];
-    boolean		cards[NUMCARDS];
-    boolean		backpack;
-    
-    // Frags, kills of other players.
-    int			frags[MAXPLAYERS];
-    weapontype_t	readyweapon;
-    
-    // Is wp_nochange if not changing.
-    weapontype_t	pendingweapon;
+    int                 powers[NUMPOWERS];
 
-    boolean		weaponowned[NUMWEAPONS];
-    int			ammo[NUMAMMO];
-    int			maxammo[NUMAMMO];
+    // [STRIFE] Additions:
+    int			        sigiltype;               // Type of Sigil carried
+    int			        nukagecount;             // Nukage exposure counter
+    int			        questflags;              // Quest bit flags
+    int			        pitch;                   // Up/down look angle
+    boolean		        centerview;              // True if view should be centered
+    inventory_t		    inventory[NUMINVENTORY]; // Player inventory items
+    boolean		        st_update;               // If true, update status bar
+    short		        numinventory;            // Num. active inventory items
+    short		        inventorycursor;         // Selected inventory item
+    short		        accuracy;                // Accuracy stat
+    short		        stamina;                 // Stamina stat
+
+    boolean             cards[NUMCARDS];
+    boolean             backpack;
 
     // True if button down last tic.
-    int			attackdown;
-    int			usedown;
+    int                 attackdown;
+    int                 usedown;
+    int                 inventorydown;   // [STRIFE] Use inventory item
+    
+    // Frags, kills of other players.
+    int                 frags[MAXPLAYERS];
+    weapontype_t        readyweapon;
+    
+    // Is wp_nochange if not changing.
+    weapontype_t        pendingweapon;
+
+    boolean             weaponowned[NUMWEAPONS];
+    int                 ammo[NUMAMMO];
+    int                 maxammo[NUMAMMO];
 
     // Bit flags, for cheats and debug.
     // See cheat_t, above.
-    int			cheats;		
+    int                 cheats;		
 
     // Refired shots are less accurate.
-    int			refire;		
+    int                 refire;		
 
      // For intermission stats.
-    int			killcount;
-    int			itemcount;
-    int			secretcount;
+    short               killcount;    // [STRIFE] Changed to short
+    //int                 itemcount;  // [STRIFE] Eliminated these.
+    //int                 secretcount;
 
     // Hint messages.
-    char*		message;	
+    char*               message;	
     
     // For screen flashing (red or bright).
-    int			damagecount;
-    int			bonuscount;
+    int                 damagecount;
+    int                 bonuscount;
 
     // Who did damage (NULL for floors/ceilings).
-    mobj_t*		attacker;
+    mobj_t*             attacker;
     
     // So gun flashes light up areas.
-    int			extralight;
+    int                 extralight;
 
     // Current PLAYPAL, ???
     //  can be set to REDCOLORMAP for pain, etc.
-    int			fixedcolormap;
+    int                 fixedcolormap;
 
     // Player skin colorshift,
     //  0-3 for which color to draw player.
-    int			colormap;	
+    //int                 colormap; [STRIFE] no such ? or did it become the below ?
+
+    // [STRIFE] For use of teleport beacons
+    short               allegiance;
 
     // Overlay view sprites (gun, etc).
-    pspdef_t		psprites[NUMPSPRITES];
+    pspdef_t            psprites[NUMPSPRITES];
+
+    // [STRIFE] Inefficient means of tracking automap state on all maps
+    boolean             mapstate[40];
 
     // True if secret level has been done.
-    boolean		didsecret;	
+    //boolean             didsecret;   [STRIFE] Removed this.
 
 } player_t;
 

@@ -1,6 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
+// Copyright (C) 2005-2014 Simon Howard
 // Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
@@ -41,41 +42,18 @@
 #include "am_map.h"
 
 
-// For use if I do walls with outsides/insides
-#define REDS		(256-5*16)
-#define REDRANGE	16
-#define BLUES		(256-4*16+8)
-#define BLUERANGE	8
-#define GREENS		(7*16)
-#define GREENRANGE	16
-#define GRAYS		(6*16)
-#define GRAYSRANGE	16
-#define BROWNS		(4*16)
-#define BROWNRANGE	16
-#define YELLOWS		(256-32+7)
-#define YELLOWRANGE	1
-#define BLACK		0
-#define WHITE		(256-47)
-
 // Automap colors
-#define BACKGROUND	BLACK
-#define YOURCOLORS	WHITE
-#define YOURRANGE	0
-#define WALLCOLORS	REDS
-#define WALLRANGE	REDRANGE
-#define TSWALLCOLORS	GRAYS
-#define TSWALLRANGE	GRAYSRANGE
-#define FDWALLCOLORS	BROWNS
-#define FDWALLRANGE	BROWNRANGE
-#define CDWALLCOLORS	YELLOWS
-#define CDWALLRANGE	YELLOWRANGE
-#define THINGCOLORS	GREENS
-#define THINGRANGE	GREENRANGE
-#define SECRETWALLCOLORS WALLCOLORS
-#define SECRETWALLRANGE WALLRANGE
-#define GRIDCOLORS	(GRAYS + GRAYSRANGE/2)
-#define GRIDRANGE	0
-#define XHAIRCOLORS	GRAYS
+#define BACKGROUND      240         // haleyjd [STRIFE]
+#define WALLCOLORS      5           // villsa [STRIFE]
+#define WALLRANGE       16
+#define TSWALLCOLORS    16
+#define FDWALLCOLORS    122         // villsa [STRIFE]
+#define CDWALLCOLORS    116
+#define CTWALLCOLORS    19          // villsa [STRIFE]
+#define SPWALLCOLORS    243         // villsa [STRIFE]
+#define THINGCOLORS     233         // villsa [STRIFE]
+#define MISSILECOLORS   227         // villsa [STRIFE]
+#define SHOOTABLECOLORS 235         // villsa [STRIFE]
 
 // drawing stuff
 #define	FB		0
@@ -92,9 +70,7 @@
 #define AM_FOLLOWKEY	'f'
 #define AM_GRIDKEY	'g'
 #define AM_MARKKEY	'm'
-#define AM_CLEARMARKKEY	'c'
-
-#define AM_NUMMARKPOINTS 10
+#define AM_CLEARMARKKEY	KEY_BACKSPACE
 
 // scale on entry
 #define INITSCALEMTOF (.2*FRACUNIT)
@@ -163,28 +139,6 @@ mline_t player_arrow[] = {
 #undef R
 #define NUMPLYRLINES (sizeof(player_arrow)/sizeof(mline_t))
 
-#define R ((8*PLAYERRADIUS)/7)
-mline_t cheat_player_arrow[] = {
-    { { -R+R/8, 0 }, { R, 0 } }, // -----
-    { { R, 0 }, { R-R/2, R/6 } },  // ----->
-    { { R, 0 }, { R-R/2, -R/6 } },
-    { { -R+R/8, 0 }, { -R-R/8, R/6 } }, // >----->
-    { { -R+R/8, 0 }, { -R-R/8, -R/6 } },
-    { { -R+3*R/8, 0 }, { -R+R/8, R/6 } }, // >>----->
-    { { -R+3*R/8, 0 }, { -R+R/8, -R/6 } },
-    { { -R/2, 0 }, { -R/2, -R/6 } }, // >>-d--->
-    { { -R/2, -R/6 }, { -R/2+R/6, -R/6 } },
-    { { -R/2+R/6, -R/6 }, { -R/2+R/6, R/4 } },
-    { { -R/6, 0 }, { -R/6, -R/6 } }, // >>-dd-->
-    { { -R/6, -R/6 }, { 0, -R/6 } },
-    { { 0, -R/6 }, { 0, R/4 } },
-    { { R/6, R/4 }, { R/6, -R/7 } }, // >>-ddt->
-    { { R/6, -R/7 }, { R/6+R/32, -R/7-R/32 } },
-    { { R/6+R/32, -R/7-R/32 }, { R/6+R/10, -R/7 } }
-};
-#undef R
-#define NUMCHEATPLYRLINES (sizeof(cheat_player_arrow)/sizeof(mline_t))
-
 #define R (FRACUNIT)
 mline_t triangle_guy[] = {
     { { -.867*R, -.5*R }, { .867*R, -.5*R } },
@@ -207,23 +161,20 @@ mline_t thintriangle_guy[] = {
 
 
 static int 	cheating = 0;
-static int 	grid = 0;
+//static int 	grid = 0;     [STRIFE]: no such variable
 
 static int 	leveljuststarted = 1; 	// kluge until AM_LevelInit() is called
 
 boolean    	automapactive = false;
-static int 	finit_width = SCREENWIDTH;
-static int 	finit_height = SCREENHEIGHT - 32;
 
 // location of window on screen
 static int 	f_x;
 static int	f_y;
 
 // size of window on screen
-static int 	f_w;
-static int	f_h;
+static int 	f_w = SCREENWIDTH;
+static int	f_h = SCREENHEIGHT - 32;
 
-static int 	lightlev; 		// used for funky strobing effect
 static byte*	fb; 			// pseudo-frame buffer
 static int 	amclock;
 
@@ -271,13 +222,14 @@ static fixed_t scale_ftom;
 
 static player_t *plr; // the player represented by an arrow
 
+mapthing_t mapmarkpoints[AM_NUMMARKPOINTS];
 static patch_t *marknums[10]; // numbers used for marking by the automap
 static mpoint_t markpoints[AM_NUMMARKPOINTS]; // where the points are
 static int markpointnum = 0; // next point to be assigned
-
+static int mapmarknum = 0;  // villsa [STRIFE] unused but this was meant to be used for objective based markers
 static int followplayer = 1; // specifies whether to follow the player around
 
-static unsigned char cheat_amap_seq[] = { 0xb2, 0x26, 0x26, 0x2e, 0xff };
+static unsigned char cheat_amap_seq[] = { 0x2e, 0xf6, 0x2a, 0xf6, 0xff };
 static cheatseq_t cheat_amap = { cheat_amap_seq, 0 };
 
 static boolean stopped = true;
@@ -369,10 +321,9 @@ void AM_restoreScaleAndLoc(void)
 //
 void AM_addMark(void)
 {
-    markpoints[markpointnum].x = m_x + m_w/2;
-    markpoints[markpointnum].y = m_y + m_h/2;
-    markpointnum = (markpointnum + 1) % AM_NUMMARKPOINTS;
-
+    markpoints[markpointnum].x = plr->mo->x;
+    markpoints[markpointnum].y = plr->mo->y;
+    markpointnum++;
 }
 
 //
@@ -458,7 +409,6 @@ void AM_initVariables(void)
 
     f_oldloc.x = MAXINT;
     amclock = 0;
-    lightlev = 0;
 
     m_paninc.x = m_paninc.y = 0;
     ftom_zoommul = FRACUNIT;
@@ -490,7 +440,9 @@ void AM_initVariables(void)
 }
 
 //
-// 
+// AM_loadPics
+//
+// haleyjd 08/27/10: [STRIFE] Changed marknums to PLMNUM%d
 //
 void AM_loadPics(void)
 {
@@ -499,7 +451,7 @@ void AM_loadPics(void)
   
     for (i=0;i<10;i++)
     {
-	sprintf(namebuf, "AMMNUM%d", i);
+	sprintf(namebuf, "PLMNUM%d", i);
 	marknums[i] = W_CacheLumpName(namebuf, PU_STATIC);
     }
 
@@ -523,6 +475,12 @@ void AM_clearMarks(void)
     markpointnum = 0;
 }
 
+void AM_resetMarkNum(void)
+{
+    markpointnum = 0;
+    mapmarknum = 0;
+}
+
 //
 // should be called at the start of every level
 // right now, i figure it out myself
@@ -532,8 +490,8 @@ void AM_LevelInit(void)
     leveljuststarted = 0;
 
     f_x = f_y = 0;
-    f_w = finit_width;
-    f_h = finit_height;
+    f_w = SCREENWIDTH;
+    f_h = SCREENHEIGHT - 32;
 
     AM_clearMarks();
 
@@ -565,15 +523,14 @@ void AM_Stop (void)
 //
 void AM_Start (void)
 {
-    static int lastlevel = -1, lastepisode = -1;
+    static int lastlevel = -1;
 
     if (!stopped) AM_Stop();
     stopped = false;
-    if (lastlevel != gamemap || lastepisode != gameepisode)
+    if (lastlevel != gamemap)
     {
 	AM_LevelInit();
 	lastlevel = gamemap;
-	lastepisode = gameepisode;
     }
     AM_initVariables();
     AM_loadPics();
@@ -674,18 +631,29 @@ AM_Responder
 	    f_oldloc.x = MAXINT;
 	    plr->message = followplayer ? AMSTR_FOLLOWON : AMSTR_FOLLOWOFF;
 	    break;
+      // haleyjd 20141101: [STRIFE] grid is not supported
+      /*
 	  case AM_GRIDKEY:
 	    grid = !grid;
 	    plr->message = grid ? AMSTR_GRIDON : AMSTR_GRIDOFF;
 	    break;
+      */
 	  case AM_MARKKEY:
-	    sprintf(buffer, "%s %d", AMSTR_MARKEDSPOT, markpointnum);
+        // haleyjd 20141101: [STRIFE] if full, mark 9 is replaced
+        if (markpointnum == AM_NUMMARKPOINTS)
+            --markpointnum;
+
+	    sprintf(buffer, "%s %d", AMSTR_MARKEDSPOT, markpointnum + 1);
 	    plr->message = buffer;
 	    AM_addMark();
 	    break;
 	  case AM_CLEARMARKKEY:
-	    AM_clearMarks();
-	    plr->message = AMSTR_MARKSCLEARED;
+        // haleyjd 20141101: [STRIFE] clears last mark only
+        if (markpointnum > mapmarknum)
+        {
+            markpoints[--markpointnum].x = -1;
+            plr->message = AMSTR_MARKSCLEARED;
+        }
 	    break;
 	  default:
 	    cheatstate=0;
@@ -770,27 +738,6 @@ void AM_doFollowPlayer(void)
     }
 
 }
-
-//
-//
-//
-void AM_updateLightLev(void)
-{
-    static int nexttic = 0;
-    //static int litelevels[] = { 0, 3, 5, 6, 6, 7, 7, 7 };
-    static int litelevels[] = { 0, 4, 7, 10, 12, 14, 15, 15 };
-    static int litelevelscnt = 0;
-   
-    // Change light level
-    if (amclock>nexttic)
-    {
-	lightlev = litelevels[litelevelscnt++];
-	if (litelevelscnt == sizeof(litelevels)/sizeof(int)) litelevelscnt = 0;
-	nexttic = amclock + 6 - (amclock % 6);
-    }
-
-}
-
 
 //
 // Updates on Game Tick
@@ -981,18 +928,8 @@ AM_drawFline
     register int ax;
     register int ay;
     register int d;
-    
-    static int fuck = 0;
 
-    // For debugging only
-    if (      fl->a.x < 0 || fl->a.x >= f_w
-	   || fl->a.y < 0 || fl->a.y >= f_h
-	   || fl->b.x < 0 || fl->b.x >= f_w
-	   || fl->b.y < 0 || fl->b.y >= f_h)
-    {
-	fprintf(stderr, "fuck %d \r", fuck++);
-	return;
-    }
+    fb = screens[0];
 
 #define PUTDOT(xx,yy,cc) fb[(yy)*f_w+(xx)]=(cc)
 
@@ -1056,53 +993,6 @@ AM_drawMline
 	AM_drawFline(&fl, color); // draws it on frame buffer using fb coords
 }
 
-
-
-//
-// Draws flat (floor/ceiling tile) aligned grid lines.
-//
-void AM_drawGrid(int color)
-{
-    fixed_t x, y;
-    fixed_t start, end;
-    mline_t ml;
-
-    // Figure out start of vertical gridlines
-    start = m_x;
-    if ((start-bmaporgx)%(MAPBLOCKUNITS<<FRACBITS))
-	start += (MAPBLOCKUNITS<<FRACBITS)
-	    - ((start-bmaporgx)%(MAPBLOCKUNITS<<FRACBITS));
-    end = m_x + m_w;
-
-    // draw vertical gridlines
-    ml.a.y = m_y;
-    ml.b.y = m_y+m_h;
-    for (x=start; x<end; x+=(MAPBLOCKUNITS<<FRACBITS))
-    {
-	ml.a.x = x;
-	ml.b.x = x;
-	AM_drawMline(&ml, color);
-    }
-
-    // Figure out start of horizontal gridlines
-    start = m_y;
-    if ((start-bmaporgy)%(MAPBLOCKUNITS<<FRACBITS))
-	start += (MAPBLOCKUNITS<<FRACBITS)
-	    - ((start-bmaporgy)%(MAPBLOCKUNITS<<FRACBITS));
-    end = m_y + m_h;
-
-    // draw horizontal gridlines
-    ml.a.x = m_x;
-    ml.b.x = m_x + m_w;
-    for (y=start; y<end; y+=(MAPBLOCKUNITS<<FRACBITS))
-    {
-	ml.a.y = y;
-	ml.b.y = y;
-	AM_drawMline(&ml, color);
-    }
-
-}
-
 //
 // Determines visible lines, draws them.
 // This is LineDef based, not LineSeg based.
@@ -1120,11 +1010,17 @@ void AM_drawWalls(void)
 	l.b.y = lines[i].v2->y;
 	if (cheating || (lines[i].flags & ML_MAPPED))
 	{
+        // villsa [STRIFE]
+        if (lines[i].special == 145 || lines[i].special == 186)
+        {
+        AM_drawMline(&l, SPWALLCOLORS);
+        }
 	    if ((lines[i].flags & LINE_NEVERSEE) && !cheating)
 		continue;
+        // villsa [STRIFE] lightlev is unused here
 	    if (!lines[i].backsector)
 	    {
-		AM_drawMline(&l, WALLCOLORS+lightlev);
+		AM_drawMline(&l, WALLCOLORS);
 	    }
 	    else
 	    {
@@ -1134,25 +1030,26 @@ void AM_drawWalls(void)
 		}
 		else if (lines[i].flags & ML_SECRET) // secret door
 		{
-		    if (cheating) AM_drawMline(&l, SECRETWALLCOLORS + lightlev);
-		    else AM_drawMline(&l, WALLCOLORS+lightlev);
+            // villsa [STRIFE] just draw the wall as is!
+            AM_drawMline(&l, WALLCOLORS);
 		}
 		else if (lines[i].backsector->floorheight
 			   != lines[i].frontsector->floorheight) {
-		    AM_drawMline(&l, FDWALLCOLORS + lightlev); // floor level change
+		    AM_drawMline(&l, FDWALLCOLORS); // floor level change
 		}
 		else if (lines[i].backsector->ceilingheight
 			   != lines[i].frontsector->ceilingheight) {
-		    AM_drawMline(&l, CDWALLCOLORS+lightlev); // ceiling level change
+		    AM_drawMline(&l, CDWALLCOLORS); // ceiling level change
 		}
 		else if (cheating) {
-		    AM_drawMline(&l, TSWALLCOLORS+lightlev);
+		    AM_drawMline(&l, TSWALLCOLORS);
 		}
 	    }
 	}
-	else if (plr->powers[pw_allmap])
+    // villsa [STRIFE] show all of the map on map 15
+	else if (plr->powers[pw_allmap] || gamemap == 15)
 	{
-	    if (!(lines[i].flags & LINE_NEVERSEE)) AM_drawMline(&l, GRAYS+3);
+	    if (!(lines[i].flags & LINE_NEVERSEE)) AM_drawMline(&l, CTWALLCOLORS);
 	}
     }
 }
@@ -1234,20 +1131,18 @@ void AM_drawPlayers(void)
 {
     int		i;
     player_t*	p;
-    static int 	their_colors[] = { GREENS, GRAYS, BROWNS, REDS };
+    // villsa [STRIFE] updated array
+    static int 	their_colors[] = { 0x80, 0x40, 0xB0, 0x10, 0x30, 0x50, 0xA0, 0x60, 0x90 };
     int		their_color = -1;
     int		color;
 
     if (!netgame)
     {
-	if (cheating)
-	    AM_drawLineCharacter
-		(cheat_player_arrow, NUMCHEATPLYRLINES, 0,
-		 plr->mo->angle, WHITE, plr->mo->x, plr->mo->y);
-	else
-	    AM_drawLineCharacter
-		(player_arrow, NUMPLYRLINES, 0, plr->mo->angle,
-		 WHITE, plr->mo->x, plr->mo->y);
+    // villsa [STRIFE] don't draw cheating player arrow.
+    // Player arrow is yellow instead of white
+	AM_drawLineCharacter
+	(player_arrow, NUMPLYRLINES, 0, plr->mo->angle,
+        224, plr->mo->x, plr->mo->y);
 	return;
     }
 
@@ -1256,14 +1151,16 @@ void AM_drawPlayers(void)
 	their_color++;
 	p = &players[i];
 
-	if ( (deathmatch && !singledemo) && p != plr)
+    // villsa [STRIFE] check for gameskill??
+	if ( (gameskill && deathmatch && !singledemo) && p != plr)
 	    continue;
 
 	if (!playeringame[i])
 	    continue;
 
+    // villsa [STRIFE] change to 27
 	if (p->powers[pw_invisibility])
-	    color = 246; // *close* to black
+	    color = 27; // *close* to black
 	else
 	    color = their_colors[their_color];
 	
@@ -1274,23 +1171,43 @@ void AM_drawPlayers(void)
 
 }
 
+//
+// AM_drawThings
+//
+// villsa [STRIFE] no arguments
+//
 void
-AM_drawThings
-( int	colors,
-  int 	colorrange)
+AM_drawThings(void)
 {
     int		i;
     mobj_t*	t;
+
+    // villsa [STRIFE] almost re-written
+    // specific things can have different radius, color and appearence
 
     for (i=0;i<numsectors;i++)
     {
 	t = sectors[i].thinglist;
 	while (t)
 	{
-	    AM_drawLineCharacter
-		(thintriangle_guy, NUMTHINTRIANGLEGUYLINES,
-		 16<<FRACBITS, t->angle, colors+lightlev, t->x, t->y);
-	    t = t->snext;
+        if (t->flags & (MF_MISSILE | MF_SPECIAL))
+        {
+            AM_drawLineCharacter(thintriangle_guy,
+                NUMTHINTRIANGLEGUYLINES, t->radius, t->angle,
+                MISSILECOLORS, t->x, t->y);
+        }
+        else if (t->flags & MF_COUNTKILL)
+        {
+            AM_drawLineCharacter(triangle_guy,
+                NUMTRIANGLEGUYLINES, t->radius, t->angle,
+                THINGCOLORS, t->x, t->y);
+        }
+        else
+        {
+            AM_drawLineCharacter(thintriangle_guy,
+                NUMTHINTRIANGLEGUYLINES, 1<<FRACBITS, t->angle,
+                THINGCOLORS, t->x, t->y);
+        }
 	}
     }
 }
@@ -1316,24 +1233,17 @@ void AM_drawMarks(void)
 
 }
 
-void AM_drawCrosshair(int color)
-{
-    fb[(f_w*(f_h+1))/2] = color; // single point for now
-
-}
-
 void AM_Drawer (void)
 {
     if (!automapactive) return;
 
     AM_clearFB(BACKGROUND);
-    if (grid)
-	AM_drawGrid(GRIDCOLORS);
+
     AM_drawWalls();
     AM_drawPlayers();
-    if (cheating==2)
-	AM_drawThings(THINGCOLORS, THINGRANGE);
-    AM_drawCrosshair(XHAIRCOLORS);
+    // villsa [STRIFE] draw things when map powerup is enabled
+    if (cheating==2 || plr->powers[pw_allmap] > 1)
+	AM_drawThings();
 
     AM_drawMarks();
 

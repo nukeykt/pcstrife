@@ -18,8 +18,8 @@
 
 #include <string.h>
 
-int		myargc;
-char**		myargv;
+int     myargc;
+char**  myargv;
 
 
 
@@ -30,19 +30,15 @@ char**		myargv;
 // in the program's command line arguments.
 // Returns the argument number (1 to argc-1)
 // or 0 if not present
-int M_CheckParm (char *check)
+int M_CheckParm(char *check)
 {
-    int		i;
+    int i;
 
-    for (i = 1;i<myargc;i++)
+    for (i = 1; i<myargc; i++)
     {
-	if ( !strcasecmp(check, myargv[i]) )
-	    return i;
+        if (!strcasecmp(check, myargv[i]))
+            return i;
     }
 
     return 0;
 }
-
-
-
-

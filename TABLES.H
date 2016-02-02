@@ -63,26 +63,8 @@ extern fixed_t		finetangent[FINEANGLES/2];
 #define ANG180		0x80000000
 #define ANG270		0xc0000000
 
-
-#define SLOPERANGE		2048
-#define SLOPEBITS		11
-#define DBITS			(FRACBITS-SLOPEBITS)
-
 typedef unsigned angle_t;
 
-
-// Effective size is 2049;
-// The +1 size is to handle the case when x==y
-//  without additional checking.
-extern angle_t		tantoangle[SLOPERANGE+1];
-
-
-// Utility function,
-//  called by R_PointToAngle.
-int
-SlopeDiv
-( unsigned	num,
-  unsigned	den);
 
 
 #endif

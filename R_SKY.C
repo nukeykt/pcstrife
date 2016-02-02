@@ -1,6 +1,7 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
+// Copyright (C) 2005-2014 Simon Howard
 // Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
@@ -44,7 +45,8 @@ int			skytexturemid;
 //
 void R_InitSkyMap (void)
 {
+    // haleyjd 10/03/10: [STRIFE] Sky is set here, not in G_DoLoadLevel.
+    // Also skytexturemid changed from 100 to 199.
     skyflatnum = R_FlatNumForName ( SKYFLATNAME );
-    skytexturemid = 100*FRACUNIT;
+    skytexturemid = 199*FRACUNIT;
 }
-

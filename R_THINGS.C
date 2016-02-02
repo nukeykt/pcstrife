@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -31,6 +32,10 @@
 #include "r_local.h"
 
 #include "doomstat.h"
+
+// haleyjd
+#include "p_local.h"
+#include "info.h"
 
 
 
@@ -167,7 +172,7 @@ R_InstallSpriteLump
 //
 void R_InitSpriteDefs (char** namelist) 
 { 
-    char**	check;
+    //char**	check;
     int		i;
     int		l;
     int		intname;
@@ -175,19 +180,18 @@ void R_InitSpriteDefs (char** namelist)
     int		rotation;
     int		start;
     int		end;
-    int		patched;
 		
     // count the number of sprite names
-    check = namelist;
+    /*check = namelist;
     while (*check != NULL)
 	check++;
 
     numsprites = check-namelist;
 	
     if (!numsprites)
-	return;
+	return;*/
 		
-    sprites = Z_Malloc(numsprites *sizeof(*sprites), PU_STATIC, NULL);
+    sprites = Z_Malloc(NUMSPRITES *sizeof(*sprites), PU_STATIC, NULL);
 	
     start = firstspritelump-1;
     end = lastspritelump+1;
@@ -195,7 +199,7 @@ void R_InitSpriteDefs (char** namelist)
     // scan all the lump names for each of the names,
     //  noting the highest frame letter.
     // Just compare 4 characters as ints
-    for (i=0 ; i<numsprites ; i++)
+    for (i=0 ; i<NUMSPRITES ; i++)
     {
 	spritename = namelist[i];
 	memset (sprtemp,-1, sizeof(sprtemp));
@@ -212,12 +216,7 @@ void R_InitSpriteDefs (char** namelist)
 		frame = lumpinfo[l].name[4] - 'A';
 		rotation = lumpinfo[l].name[5] - '0';
 
-		if (modifiedgame)
-		    patched = W_GetNumForName (lumpinfo[l].name);
-		else
-		    patched = l;
-
-		R_InstallSpriteLump (patched, frame, rotation, false);
+		R_InstallSpriteLump (l, frame, rotation, false);
 
 		if (lumpinfo[l].name[6])
 		{
@@ -232,6 +231,8 @@ void R_InitSpriteDefs (char** namelist)
 	if (maxframe == -1)
 	{
 	    sprites[i].numframes = 0;
+        if(devparm)
+            printf("R_InitSprites: No patches found for %s!\n", namelist[i]);
 	    continue;
 	}
 		
@@ -289,13 +290,7 @@ int		newvissprite;
 //
 void R_InitSprites (char** namelist)
 {
-    int		i;
-	
-    for (i=0 ; i<SCREENWIDTH ; i++)
-    {
-	negonearray[i] = -1;
-    }
-	
+    memset(negonearray, -1, sizeof(negonearray));
     R_InitSpriteDefs (namelist);
 }
 
@@ -314,12 +309,12 @@ void R_ClearSprites (void)
 //
 // R_NewVisSprite
 //
-vissprite_t	overflowsprite;
+//vissprite_t	overflowsprite;
 
 vissprite_t* R_NewVisSprite (void)
 {
     if (vissprite_p == &vissprites[MAXVISSPRITES])
-	return &overflowsprite;
+	return NULL;
     
     vissprite_p++;
     return vissprite_p-1;
@@ -338,8 +333,14 @@ short*		mceilingclip;
 
 fixed_t		spryscale;
 fixed_t		sprtopscreen;
+fixed_t		sprbotscreen;       // villsa [STRIFE]
 
-void R_DrawMaskedColumn (column_t* column)
+//
+// R_DrawMaskedColumn
+//
+// villsa [STRIFE] new baseclip argument
+//
+void R_DrawMaskedColumn (column_t* column, int baseclip)
 {
     int		topscreen;
     int 	bottomscreen;
@@ -361,6 +362,13 @@ void R_DrawMaskedColumn (column_t* column)
 	    dc_yh = mfloorclip[dc_x]-1;
 	if (dc_yl <= mceilingclip[dc_x])
 	    dc_yl = mceilingclip[dc_x]+1;
+
+    // villsa [STRIFE] checks for clipping
+    if (baseclip)
+    {
+        if (dc_yh > baseclip)
+            dc_yh = baseclip;
+    }
 
 	if (dc_yl <= dc_yh)
 	{
@@ -390,33 +398,74 @@ R_DrawVisSprite
   int			x1,
   int			x2 )
 {
-    column_t*		column;
-    int			texturecolumn;
-    fixed_t		frac;
-    patch_t*		patch;
+    column_t*           column;
+    int                 texturecolumn;
+    fixed_t             frac;
+    patch_t*            patch;
+    int                 clip;   // villsa [STRIFE]
+    //int                 translation;    // villsa [STRIFE]
 	
 	
     patch = W_CacheLumpNum (vis->patch+firstspritelump, PU_CACHE);
 
     dc_colormap = vis->colormap;
     
-    if (!dc_colormap)
+    // villsa [STRIFE] unused
+    /*if (!dc_colormap)
     {
 	// NULL colormap = shadow draw
 	colfunc = fuzzcolfunc;
+    }*/
+
+    // villsa [STRIFE] Handle the two types of translucency
+    if (vis->mobjflags & MF_SHADOW)
+    {
+        if (vis->mobjflags & MF_TRANSLATION)
+        {
+            colfunc = R_DrawTRTLColumn;
+            dc_translation = translationtables - 256 +
+                ((vis->mobjflags & MF_TRANSLATION) >> (MF_TRANSSHIFT - 8));
+        }
+        else if (vis->mobjflags & MF_MVIS)
+        {
+            colfunc = R_DrawMVisTLColumn;
+        }
+        else
+        {
+            colfunc = fuzzcolfunc;
+        }
+    }
+    else if (vis->mobjflags & MF_MVIS)
+    {
+        // haleyjd 20141215: [STRIFE] Objects which are *only* MF_MVIS (players
+        // using double Shadow Armors, in particular) are totally invisible. 
+        // Upstreamed after discovered in SVE. Note this causes a 
+        // vanilla-accurate glitch with Shadow Acolytes - if they die while
+        // MF_MVIS is set, A_Fall fails to remove it and their corpse will
+        // completely disappear (that's also fixed in SVE, but not here).
+        return;
     }
     else if (vis->mobjflags & MF_TRANSLATION)
     {
-	colfunc = R_DrawTranslatedColumn;
-	dc_translation = translationtables - 256 +
-	    ( (vis->mobjflags & MF_TRANSLATION) >> (MF_TRANSSHIFT-8) );
+        colfunc = R_DrawTranslatedColumn;
+        dc_translation = translationtables - 256 +
+            ((vis->mobjflags & MF_TRANSLATION) >> (MF_TRANSSHIFT - 8));
     }
 	
-    dc_iscale = abs(vis->xiscale)>>detailshift;
+    dc_iscale = abs(vis->xiscale);
     dc_texturemid = vis->texturemid;
     frac = vis->startfrac;
     spryscale = vis->scale;
     sprtopscreen = centeryfrac - FixedMul(dc_texturemid,spryscale);
+
+    // villsa [STRIFE] clip sprite's feet if needed
+    if (vis->mobjflags & MF_FEETCLIPPED)
+    {
+        sprbotscreen = sprtopscreen + FixedMul(SHORT(patch->height) << FRACBITS, spryscale);
+        clip = (sprbotscreen - FixedMul(10 * FRACUNIT, spryscale)) >> FRACBITS;
+    }
+    else
+        clip = 0;
 	
     for (dc_x=vis->x1 ; dc_x<=vis->x2 ; dc_x++, frac += vis->xiscale)
     {
@@ -427,7 +476,7 @@ R_DrawVisSprite
 #endif
 	column = (column_t *) ((byte *)patch +
 			       LONG(patch->columnofs[texturecolumn]));
-	R_DrawMaskedColumn (column);
+    R_DrawMaskedColumn(column, clip);  // villsa [STRIFE] clip argument
     }
 
     colfunc = basecolfunc;
@@ -469,6 +518,8 @@ void R_ProjectSprite (mobj_t* thing)
     
     angle_t		ang;
     fixed_t		iscale;
+
+    int frame;
     
     // transform the origin point
     tr_x = thing->x - viewx;
@@ -505,7 +556,12 @@ void R_ProjectSprite (mobj_t* thing)
 	I_Error ("R_ProjectSprite: invalid sprite frame %i : %i ",
 		 thing->sprite, thing->frame);
 #endif
-    sprframe = &sprdef->spriteframes[ thing->frame & FF_FRAMEMASK];
+    frame = thing->frame & FF_FRAMEMASK;
+
+    if (frame >= sprdef->numframes)
+        return;
+
+    sprframe = &sprdef->spriteframes[frame];
 
     if (sprframe->rotate)
     {
@@ -539,12 +595,21 @@ void R_ProjectSprite (mobj_t* thing)
     
     // store information in a vissprite
     vis = R_NewVisSprite ();
+    if (!vis)
+        return;
     vis->mobjflags = thing->flags;
-    vis->scale = xscale<<detailshift;
+    vis->scale = xscale;
     vis->gx = thing->x;
     vis->gy = thing->y;
     vis->gz = thing->z;
-    vis->gzt = thing->z + spritetopoffset[lump];
+
+    // villsa [STRIFE]
+    if (thing->flags & MF_FEETCLIPPED)
+        vis->gz -= (10 * FRACUNIT);
+
+    // villsa [STRIFE]
+    vis->gzt = vis->gz + spritetopoffset[lump];
+
     vis->texturemid = vis->gzt - viewz;
     vis->x1 = x1 < 0 ? 0 : x1;
     vis->x2 = x2 >= viewwidth ? viewwidth-1 : x2;	
@@ -566,12 +631,13 @@ void R_ProjectSprite (mobj_t* thing)
     vis->patch = lump;
     
     // get light level
-    if (thing->flags & MF_SHADOW)
+    // villsa [STRIFE] unused
+    /*if (thing->flags & MF_SHADOW)
     {
 	// shadow draw
 	vis->colormap = NULL;
     }
-    else if (fixedcolormap)
+    else */if (fixedcolormap)
     {
 	// fixed map
 	vis->colormap = fixedcolormap;
@@ -585,7 +651,7 @@ void R_ProjectSprite (mobj_t* thing)
     else
     {
 	// diminished light
-	index = xscale>>(LIGHTSCALESHIFT-detailshift);
+	index = xscale>>LIGHTSCALESHIFT;
 
 	if (index >= MAXLIGHTSCALE) 
 	    index = MAXLIGHTSCALE-1;
@@ -661,7 +727,9 @@ void R_DrawPSprite (pspdef_t* psp)
     sprframe = &sprdef->spriteframes[ psp->state->frame & FF_FRAMEMASK ];
 
     lump = sprframe->lump[0];
-    flip = (boolean)sprframe->flip[0];
+    // [STRIFE] haleyjd 20110629: -flip replaces this.
+    //flip = (boolean)sprframe->flip[0];
+    flip = flipparm;
     
     // calculate edges of the shape
     tx = psp->sx-160*FRACUNIT;
@@ -683,10 +751,10 @@ void R_DrawPSprite (pspdef_t* psp)
     // store information in a vissprite
     vis = &avis;
     vis->mobjflags = 0;
-    vis->texturemid = (BASEYCENTER<<FRACBITS)+FRACUNIT/2-(psp->sy-spritetopoffset[lump]);
+    //vis->texturemid = (BASEYCENTER<<FRACBITS)+FRACUNIT/2-(psp->sy-spritetopoffset[lump]);
     vis->x1 = x1 < 0 ? 0 : x1;
     vis->x2 = x2 >= viewwidth ? viewwidth-1 : x2;	
-    vis->scale = pspritescale<<detailshift;
+    vis->scale = pspritescale;
     
     if (flip)
     {
@@ -698,32 +766,51 @@ void R_DrawPSprite (pspdef_t* psp)
 	vis->xiscale = pspriteiscale;
 	vis->startfrac = 0;
     }
+
+    // villsa [STRIFE] calculate y offset with view pitch
+    vis->texturemid = ((BASEYCENTER << FRACBITS) + FRACUNIT / 2) - (psp->sy - spritetopoffset[lump])
+        + FixedMul(vis->xiscale, (centery - viewheight / 2) << FRACBITS);
     
     if (vis->x1 > x1)
 	vis->startfrac += vis->xiscale*(vis->x1-x1);
 
     vis->patch = lump;
 
-    if (viewplayer->powers[pw_invisibility] > 4*32
-	|| viewplayer->powers[pw_invisibility] & 8)
+    if (viewplayer->powers[pw_invisibility] > 4 * 32
+        || (viewplayer->powers[pw_invisibility] & 8))
     {
-	// shadow draw
-	vis->colormap = NULL;
+        // shadow draw
+        vis->colormap = spritelights[MAXLIGHTSCALE - 1];
+        vis->mobjflags |= MF_SHADOW;
     }
-    else if (fixedcolormap)
+    else if (viewplayer->powers[pw_invisibility] & 4)
     {
-	// fixed color
-	vis->colormap = fixedcolormap;
+        vis->mobjflags |= (MF_SHADOW | MF_MVIS);
     }
-    else if (psp->state->frame & FF_FULLBRIGHT)
+
+    // When not MVIS, or if SHADOW, behave normally:
+    if (!(viewplayer->mo->flags & MF_MVIS) || (viewplayer->mo->flags & MF_SHADOW))
     {
-	// full bright
-	vis->colormap = colormaps;
+        if (fixedcolormap)
+        {
+            // fixed color
+            vis->colormap = fixedcolormap;
+        }
+        else if (psp->state->frame & FF_FULLBRIGHT)
+        {
+            // full bright
+            vis->colormap = colormaps;
+        }
+        else
+        {
+            // local light
+            vis->colormap = spritelights[MAXLIGHTSCALE - 1];
+        }
     }
     else
     {
-	// local light
-	vis->colormap = spritelights[MAXLIGHTSCALE-1];
+        // When MVIS, use invulnerability colormap
+        vis->colormap = colormaps + INVERSECOLORMAP * 256 * sizeof(lighttable_t);
     }
 	
     R_DrawVisSprite (vis, vis->x1, vis->x2);
@@ -785,11 +872,11 @@ void R_SortVisSprites (void)
     fixed_t		bestscale;
 
     count = vissprite_p - vissprites;
-	
-    unsorted.next = unsorted.prev = &unsorted;
 
     if (!count)
 	return;
+	
+    unsorted.next = unsorted.prev = &unsorted;
 		
     for (ds=vissprites ; ds<vissprite_p ; ds++)
     {
@@ -970,9 +1057,6 @@ void R_DrawMasked (void)
 	if (ds->maskedtexturecol)
 	    R_RenderMaskedSegRange (ds, ds->x1, ds->x2);
     
-    // draw the psprites on top of everything
-    //  but does not draw on side views
-    if (!viewangleoffset)		
 	R_DrawPlayerSprites ();
 }
 

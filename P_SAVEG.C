@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -69,34 +70,39 @@ void P_ArchivePlayers (void)
 //
 // P_UnArchivePlayers
 //
-void P_UnArchivePlayers (void)
+void P_UnArchivePlayers(boolean userload)
 {
     int		i;
     int		j;
-	
-    for (i=0 ; i<MAXPLAYERS ; i++)
+
+    for (i = 0; i < MAXPLAYERS; i++)
     {
-	if (!playeringame[i])
-	    continue;
-	
-	PADSAVEP();
+        if (!playeringame[i])
+            continue;
 
-	memcpy (&players[i],save_p, sizeof(player_t));
-	save_p += sizeof(player_t);
-	
-	// will be set when unarc thinker
-	players[i].mo = NULL;	
-	players[i].message = NULL;
-	players[i].attacker = NULL;
+        PADSAVEP();
 
-	for (j=0 ; j<NUMPSPRITES ; j++)
-	{
-	    if (players[i]. psprites[j].state)
-	    {
-		players[i]. psprites[j].state 
-		    = &states[ (int)players[i].psprites[j].state ];
-	    }
-	}
+        if (userload)
+        {
+            memcpy(&players[i], save_p, sizeof(player_t));
+            players[i].mo = NULL;
+        }
+        save_p += sizeof(player_t);
+
+        // will be set when unarc thinker
+        players[i].message = NULL;
+        players[i].attacker = NULL;
+        if (userload)
+        {
+            for (j = 0; j < NUMPSPRITES; j++)
+            {
+                if (players[i].psprites[j].state)
+                {
+                    players[i].psprites[j].state
+                        = &states[(int)players[i].psprites[j].state];
+                }
+            }
+        }
     }
 }
 
@@ -121,10 +127,10 @@ void P_ArchiveWorld (void)
 	*put++ = sec->floorheight >> FRACBITS;
 	*put++ = sec->ceilingheight >> FRACBITS;
 	*put++ = sec->floorpic;
-	*put++ = sec->ceilingpic;
+	//*put++ = sec->ceilingpic; [STRIFE] not saved.
 	*put++ = sec->lightlevel;
 	*put++ = sec->special;		// needed?
-	*put++ = sec->tag;		// needed?
+	//*put++ = sec->tag;		// needed? [STRIFE] not saved.
     }
 
     
@@ -133,7 +139,7 @@ void P_ArchiveWorld (void)
     {
 	*put++ = li->flags;
 	*put++ = li->special;
-	*put++ = li->tag;
+	//*put++ = li->tag;flags [STRIFE] not saved.
 	for (j=0 ; j<2 ; j++)
 	{
 	    if (li->sidenum[j] == -1)
@@ -141,8 +147,9 @@ void P_ArchiveWorld (void)
 	    
 	    si = &sides[li->sidenum[j]];
 
-	    *put++ = si->textureoffset >> FRACBITS;
-	    *put++ = si->rowoffset >> FRACBITS;
+        // [STRIFE] offsets not saved.
+	    //*put++ = si->textureoffset >> FRACBITS;
+	    //*put++ = si->rowoffset >> FRACBITS;
 	    *put++ = si->toptexture;
 	    *put++ = si->bottomtexture;
 	    *put++ = si->midtexture;	
@@ -174,10 +181,10 @@ void P_UnArchiveWorld (void)
 	sec->floorheight = *get++ << FRACBITS;
 	sec->ceilingheight = *get++ << FRACBITS;
 	sec->floorpic = *get++;
-	sec->ceilingpic = *get++;
+	//sec->ceilingpic = *get++; [STRIFE] not saved
 	sec->lightlevel = *get++;
 	sec->special = *get++;		// needed?
-	sec->tag = *get++;		// needed?
+	//sec->tag = *get++;		// needed? [STRIFE] not saved
 	sec->specialdata = 0;
 	sec->soundtarget = 0;
     }
@@ -187,14 +194,15 @@ void P_UnArchiveWorld (void)
     {
 	li->flags = *get++;
 	li->special = *get++;
-	li->tag = *get++;
+	//li->tag = *get++; [STRIFE] not saved
 	for (j=0 ; j<2 ; j++)
 	{
 	    if (li->sidenum[j] == -1)
 		continue;
 	    si = &sides[li->sidenum[j]];
-	    si->textureoffset = *get++ << FRACBITS;
-	    si->rowoffset = *get++ << FRACBITS;
+        // [STRIFE] offsets not saved.
+	    //si->textureoffset = *get++ << FRACBITS;
+	    //si->rowoffset = *get++ << FRACBITS;
 	    si->toptexture = *get++;
 	    si->bottomtexture = *get++;
 	    si->midtexture = *get++;
@@ -230,7 +238,7 @@ void P_ArchiveThinkers (void)
     // save off the current thinkers
     for (th = thinkercap.next ; th != &thinkercap ; th=th->next)
     {
-	if (th->function.acp1 == (actionf_p1)P_MobjThinker)
+	if (th->function == P_MobjThinker)
 	{
 	    *save_p++ = tc_mobj;
 	    PADSAVEP();
@@ -256,61 +264,65 @@ void P_ArchiveThinkers (void)
 //
 // P_UnArchiveThinkers
 //
-void P_UnArchiveThinkers (void)
+void P_UnArchiveThinkers(void)
 {
     byte		tclass;
     thinker_t*		currentthinker;
     thinker_t*		next;
     mobj_t*		mobj;
-    
+
     // remove all the current thinkers
     currentthinker = thinkercap.next;
     while (currentthinker != &thinkercap)
     {
-	next = currentthinker->next;
-	
-	if (currentthinker->function.acp1 == (actionf_p1)P_MobjThinker)
-	    P_RemoveMobj ((mobj_t *)currentthinker);
-	else
-	    Z_Free (currentthinker);
+        next = currentthinker->next;
 
-	currentthinker = next;
+        if (currentthinker->function == P_MobjThinker)
+            P_RemoveMobj((mobj_t *)currentthinker);
+        else
+            Z_Free(currentthinker);
+
+        currentthinker = next;
     }
-    P_InitThinkers ();
-	
+    P_InitThinkers();
+
     // read in saved thinkers
     while (1)
     {
-	tclass = *save_p++;
-	switch (tclass)
-	{
-	  case tc_end:
-	    return; 	// end of list
-			
-	  case tc_mobj:
-	    PADSAVEP();
-	    mobj = Z_Malloc (sizeof(*mobj), PU_LEVEL, NULL);
-	    memcpy (mobj, save_p, sizeof(*mobj));
-	    save_p += sizeof(*mobj);
-	    mobj->state = &states[(int)mobj->state];
-	    mobj->target = NULL;
-	    if (mobj->player)
-	    {
-		mobj->player = &players[(int)mobj->player-1];
-		mobj->player->mo = mobj;
-	    }
-	    P_SetThingPosition (mobj);
-	    mobj->info = &mobjinfo[mobj->type];
-	    mobj->floorz = mobj->subsector->sector->floorheight;
-	    mobj->ceilingz = mobj->subsector->sector->ceilingheight;
-	    mobj->thinker.function.acp1 = (actionf_p1)P_MobjThinker;
-	    P_AddThinker (&mobj->thinker);
-	    break;
-			
-	  default:
-	    I_Error ("Unknown tclass %i in savegame",tclass);
-	}
-	
+        tclass = *save_p++;
+        switch (tclass)
+        {
+        case tc_end:
+            return; 	// end of list
+
+        case tc_mobj:
+            PADSAVEP();
+            mobj = Z_Malloc(sizeof(*mobj), PU_LEVEL, NULL);
+            memcpy(mobj, save_p, sizeof(*mobj));
+            save_p += sizeof(*mobj);
+            mobj->state = &states[(int)mobj->state];
+            if (mobj->target && mobj->flags & MF_ALLY)
+                mobj->target = players[0].mo;
+            else
+                mobj->target = NULL;
+            if (mobj->player)
+            {
+                mobj->player = &players[(int)mobj->player - 1];
+                mobj->player->mo = mobj;
+                mobj->target = NULL;
+            }
+            P_SetThingPosition(mobj);
+            mobj->info = &mobjinfo[mobj->type];
+            mobj->floorz = mobj->subsector->sector->floorheight;
+            mobj->ceilingz = mobj->subsector->sector->ceilingheight;
+            mobj->thinker.function = P_MobjThinker;
+            P_AddThinker(&mobj->thinker);
+            break;
+
+        default:
+            I_Error("Unknown tclass %i in savegame", tclass);
+        }
+
     }
 
 }
@@ -328,6 +340,7 @@ enum
     tc_flash,
     tc_strobe,
     tc_glow,
+    tc_slidedoor,
     tc_endspecials
 
 } specials_e;	
@@ -339,6 +352,7 @@ enum
 //
 // T_MoveCeiling, (ceiling_t: sector_t * swizzle), - active list
 // T_VerticalDoor, (vldoor_t: sector_t * swizzle),
+// T_SlidingDoor, (slidedoor_t: sector_t *, line_t * x 2 swizzle) [STRIFE]
 // T_MoveFloor, (floormove_t: sector_t * swizzle),
 // T_LightFlash, (lightflash_t: sector_t * swizzle),
 // T_StrobeFlash, (strobe_t: sector_t *),
@@ -347,20 +361,21 @@ enum
 //
 void P_ArchiveSpecials (void)
 {
-    thinker_t*		th;
-    ceiling_t*		ceiling;
-    vldoor_t*		door;
-    floormove_t*	floor;
-    plat_t*		plat;
-    lightflash_t*	flash;
-    strobe_t*		strobe;
-    glow_t*		glow;
-    int			i;
+    thinker_t*      th;
+    ceiling_t*      ceiling;
+    vldoor_t*       door;
+    slidedoor_t*    slidedoor;
+    floormove_t*    floor;
+    plat_t*         plat;
+    lightflash_t*   flash;
+    strobe_t*       strobe;
+    glow_t*         glow;
+    int             i;
 	
     // save off the current thinkers
     for (th = thinkercap.next ; th != &thinkercap ; th=th->next)
     {
-	if (th->function.acv == (actionf_v)NULL)
+	if (th->function == NULL)
 	{
 	    for (i = 0; i < MAXCEILINGS;i++)
 		if (activeceilings[i] == (ceiling_t *)th)
@@ -378,7 +393,7 @@ void P_ArchiveSpecials (void)
 	    continue;
 	}
 			
-	if (th->function.acp1 == (actionf_p1)T_MoveCeiling)
+	if (th->function == T_MoveCeiling)
 	{
 	    *save_p++ = tc_ceiling;
 	    PADSAVEP();
@@ -389,7 +404,7 @@ void P_ArchiveSpecials (void)
 	    continue;
 	}
 			
-	if (th->function.acp1 == (actionf_p1)T_VerticalDoor)
+	if (th->function == T_VerticalDoor)
 	{
 	    *save_p++ = tc_door;
 	    PADSAVEP();
@@ -399,8 +414,21 @@ void P_ArchiveSpecials (void)
 	    door->sector = (sector_t *)(door->sector - sectors);
 	    continue;
 	}
+
+    if (th->function == T_SlidingDoor)
+    {
+        *save_p++ = tc_slidedoor;
+        PADSAVEP();
+        slidedoor = (slidedoor_t *)save_p;
+        memcpy(slidedoor, th, sizeof(*slidedoor));
+        save_p += sizeof(*slidedoor);
+        slidedoor->frontsector = (sector_t *)(slidedoor->frontsector - sectors);
+        slidedoor->line1 = (line_t *)(slidedoor->line1 - lines);
+        slidedoor->line2 = (line_t *)(slidedoor->line2 - lines);
+        continue;
+    }
 			
-	if (th->function.acp1 == (actionf_p1)T_MoveFloor)
+	if (th->function == T_MoveFloor)
 	{
 	    *save_p++ = tc_floor;
 	    PADSAVEP();
@@ -411,7 +439,7 @@ void P_ArchiveSpecials (void)
 	    continue;
 	}
 			
-	if (th->function.acp1 == (actionf_p1)T_PlatRaise)
+	if (th->function == T_PlatRaise)
 	{
 	    *save_p++ = tc_plat;
 	    PADSAVEP();
@@ -422,7 +450,7 @@ void P_ArchiveSpecials (void)
 	    continue;
 	}
 			
-	if (th->function.acp1 == (actionf_p1)T_LightFlash)
+	if (th->function == T_LightFlash)
 	{
 	    *save_p++ = tc_flash;
 	    PADSAVEP();
@@ -433,7 +461,7 @@ void P_ArchiveSpecials (void)
 	    continue;
 	}
 			
-	if (th->function.acp1 == (actionf_p1)T_StrobeFlash)
+	if (th->function == T_StrobeFlash)
 	{
 	    *save_p++ = tc_strobe;
 	    PADSAVEP();
@@ -444,7 +472,7 @@ void P_ArchiveSpecials (void)
 	    continue;
 	}
 			
-	if (th->function.acp1 == (actionf_p1)T_Glow)
+	if (th->function == T_Glow)
 	{
 	    *save_p++ = tc_glow;
 	    PADSAVEP();
@@ -467,14 +495,15 @@ void P_ArchiveSpecials (void)
 //
 void P_UnArchiveSpecials (void)
 {
-    byte		tclass;
-    ceiling_t*		ceiling;
-    vldoor_t*		door;
-    floormove_t*	floor;
-    plat_t*		plat;
-    lightflash_t*	flash;
-    strobe_t*		strobe;
-    glow_t*		glow;
+    byte            tclass;
+    ceiling_t*      ceiling;
+    vldoor_t*       door;
+    slidedoor_t*    slidedoor;
+    floormove_t*    floor;
+    plat_t*         plat;
+    lightflash_t*   flash;
+    strobe_t*       strobe;
+    glow_t*         glow;
 	
 	
     // read in saved thinkers
@@ -494,8 +523,8 @@ void P_UnArchiveSpecials (void)
 	    ceiling->sector = &sectors[(int)ceiling->sector];
 	    ceiling->sector->specialdata = ceiling;
 
-	    if (ceiling->thinker.function.acp1)
-		ceiling->thinker.function.acp1 = (actionf_p1)T_MoveCeiling;
+	    if (ceiling->thinker.function)
+		ceiling->thinker.function = T_MoveCeiling;
 
 	    P_AddThinker (&ceiling->thinker);
 	    P_AddActiveCeiling(ceiling);
@@ -508,8 +537,21 @@ void P_UnArchiveSpecials (void)
 	    save_p += sizeof(*door);
 	    door->sector = &sectors[(int)door->sector];
 	    door->sector->specialdata = door;
-	    door->thinker.function.acp1 = (actionf_p1)T_VerticalDoor;
+	    door->thinker.function = T_VerticalDoor;
 	    P_AddThinker (&door->thinker);
+	    break;
+				
+	  case tc_slidedoor:
+	    PADSAVEP();
+	    slidedoor = Z_Malloc (sizeof(*slidedoor), PU_LEVEL, NULL);
+	    memcpy (slidedoor, save_p, sizeof(*slidedoor));
+	    save_p += sizeof(*slidedoor);
+        slidedoor->line1 = &lines[(int)slidedoor->line1];
+        slidedoor->line2 = &lines[(int)slidedoor->line2];
+        slidedoor->frontsector = &sectors[(int)slidedoor->frontsector];
+        slidedoor->frontsector->specialdata = slidedoor;
+        slidedoor->thinker.function = T_SlidingDoor;
+	    P_AddThinker (&slidedoor->thinker);
 	    break;
 				
 	  case tc_floor:
@@ -519,7 +561,7 @@ void P_UnArchiveSpecials (void)
 	    save_p += sizeof(*floor);
 	    floor->sector = &sectors[(int)floor->sector];
 	    floor->sector->specialdata = floor;
-	    floor->thinker.function.acp1 = (actionf_p1)T_MoveFloor;
+	    floor->thinker.function = T_MoveFloor;
 	    P_AddThinker (&floor->thinker);
 	    break;
 				
@@ -531,8 +573,8 @@ void P_UnArchiveSpecials (void)
 	    plat->sector = &sectors[(int)plat->sector];
 	    plat->sector->specialdata = plat;
 
-	    if (plat->thinker.function.acp1)
-		plat->thinker.function.acp1 = (actionf_p1)T_PlatRaise;
+	    if (plat->thinker.function)
+		plat->thinker.function = T_PlatRaise;
 
 	    P_AddThinker (&plat->thinker);
 	    P_AddActivePlat(plat);
@@ -544,7 +586,7 @@ void P_UnArchiveSpecials (void)
 	    memcpy (flash, save_p, sizeof(*flash));
 	    save_p += sizeof(*flash);
 	    flash->sector = &sectors[(int)flash->sector];
-	    flash->thinker.function.acp1 = (actionf_p1)T_LightFlash;
+	    flash->thinker.function = T_LightFlash;
 	    P_AddThinker (&flash->thinker);
 	    break;
 				
@@ -554,7 +596,7 @@ void P_UnArchiveSpecials (void)
 	    memcpy (strobe, save_p, sizeof(*strobe));
 	    save_p += sizeof(*strobe);
 	    strobe->sector = &sectors[(int)strobe->sector];
-	    strobe->thinker.function.acp1 = (actionf_p1)T_StrobeFlash;
+	    strobe->thinker.function = T_StrobeFlash;
 	    P_AddThinker (&strobe->thinker);
 	    break;
 				
@@ -564,7 +606,7 @@ void P_UnArchiveSpecials (void)
 	    memcpy (glow, save_p, sizeof(*glow));
 	    save_p += sizeof(*glow);
 	    glow->sector = &sectors[(int)glow->sector];
-	    glow->thinker.function.acp1 = (actionf_p1)T_Glow;
+	    glow->thinker.function = T_Glow;
 	    P_AddThinker (&glow->thinker);
 	    break;
 				
@@ -576,4 +618,3 @@ void P_UnArchiveSpecials (void)
     }
 
 }
-

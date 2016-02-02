@@ -594,23 +594,14 @@ ST_Responder (event_t* ev)
                   plyr->message = STSTR_MUS;
                   cht_GetParam(&cheat_mus, buf);
 
-                  musnum = mus_runnin + (buf[0] - '0') * 10 + buf[1] - '0' - 1;
+                  musnum = mus_action + (buf[0] - '0') * 10 + buf[1] - '0' - 1;
 
                   if (((buf[0] - '0') * 10 + buf[1] - '0') > 35)
                       plyr->message = STSTR_NOMUS;
                   else
                       S_ChangeMusic(musnum, 1);
               }
-              else if (!commercial && cht_CheckCheat(&cheat_noclip, ev->data1))
-              {
-                  plyr->cheats ^= CF_NOCLIP;
-
-                  if (plyr->cheats & CF_NOCLIP)
-                      plyr->message = STSTR_NCON;
-                  else
-                      plyr->message = STSTR_NCOFF;
-              }
-              else if (commercial && cht_CheckCheat(&cheat_commercial_noclip, ev->data1))
+              else if (cht_CheckCheat(&cheat_commercial_noclip, ev->data1))
               {
                   plyr->cheats ^= CF_NOCLIP;
 
@@ -643,8 +634,8 @@ ST_Responder (event_t* ev)
               // 'choppers' invulnerability & chainsaw
               else if (cht_CheckCheat(&cheat_choppers, ev->data1))
               {
-                  plyr->weaponowned[wp_chainsaw] = true;
-                  plyr->powers[pw_invulnerability] = true;
+                  //plyr->weaponowned[wp_chainsaw] = true;
+                  //plyr->powers[pw_invulnerability] = true;
                   plyr->message = STSTR_CHOPPERS;
               }
               // 'mypos' for player position
@@ -663,44 +654,14 @@ ST_Responder (event_t* ev)
           if (cht_CheckCheat(&cheat_clev, ev->data1))
           {
               char    buf[3];
-              int	    epsd;
               int	    map;
 
               cht_GetParam(&cheat_clev, buf);
 
-              if (commercial)
-              {
-                  epsd = 0;
                   map = (buf[0] - '0') * 10 + buf[1] - '0';
-              }
-              else
-              {
-                  epsd = buf[0] - '0';
-                  map = buf[1] - '0';
-              }
 
               // Catch invalid maps.
-              if (!commercial)
-              {
-                  if (epsd < 1)
-                  {
-                      return false;
-                  }
-                  if (epsd > 3)
-                  {
-                      return false;
-                  }
-                  if (map < 1)
-                  {
-                      return false;
-                  }
-                  if (map > 9)
-                  {
-                      return false;
-                  }
-              }
-              else
-              {
+
                   if (map < 1)
                   {
                       return false;
@@ -709,11 +670,10 @@ ST_Responder (event_t* ev)
                   {
                       return false;
                   }
-              }
 
               // So be it.
               plyr->message = STSTR_CLEV;
-              G_DeferedInitNew(gameskill, epsd, map);
+              G_DeferedInitNew(gameskill, map);
           }
       }
   }
@@ -893,8 +853,7 @@ void ST_updateFaceWidget(void)
     if (priority < 5)
     {
 	// invulnerability
-	if ((plyr->cheats & CF_GODMODE)
-	    || plyr->powers[pw_invulnerability])
+	if ((plyr->cheats & CF_GODMODE))
 	{
 	    priority = 4;
 

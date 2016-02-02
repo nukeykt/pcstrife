@@ -50,14 +50,7 @@ int I_GetSfxLumpNum (sfxinfo_t* sfxinfo );
 
 
 // Starts a sound in a particular sound channel.
-int
-I_StartSound
-(int		id,
-void *data,
-  int		vol,
-  int		sep,
-  int		pitch,
-  int		priority );
+int I_StartSound(int id, void *data, int vol, int pitch, int sep);
 
 
 // Stops a sound channel.
@@ -98,6 +91,7 @@ void
 I_PlaySong
 ( int		handle,
   boolean	looping );
+void I_StartVoice(char *name);
 // Stops a song over 3 seconds.
 void I_StopSong(int handle);
 // See above (register), then think backwards

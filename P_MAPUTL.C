@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -37,6 +38,8 @@
 // P_AproxDistance
 // Gives an estimation of distance (not exact)
 //
+// [STRIFE] Verified unmodified
+//
 
 fixed_t
 P_AproxDistance
@@ -54,6 +57,8 @@ P_AproxDistance
 //
 // P_PointOnLineSide
 // Returns 0 or 1
+//
+// [STRIFE] Verified unmodified
 //
 int
 P_PointOnLineSide
@@ -98,6 +103,8 @@ P_PointOnLineSide
 // P_BoxOnLineSide
 // Considers the line to be infinite
 // Returns side 0 or 1, -1 if box crosses the line.
+//
+// [STRIFE] Verified unmodified
 //
 int
 P_BoxOnLineSide
@@ -149,6 +156,8 @@ P_BoxOnLineSide
 //
 // P_PointOnDivlineSide
 // Returns 0 or 1.
+//
+// [STRIFE] Verified unmodified
 //
 int
 P_PointOnDivlineSide
@@ -220,6 +229,8 @@ P_MakeDivline
 // This is only called by the addthings
 // and addlines traversers.
 //
+// [STRIFE] Verified unmodified
+//
 fixed_t
 P_InterceptVector
 ( divline_t*	v2,
@@ -284,6 +295,8 @@ P_InterceptVector
 // through a two sided line.
 // OPTIMIZE: keep this precalculated
 //
+// [STRIFE] Verified unmodified
+//
 fixed_t opentop;
 fixed_t openbottom;
 fixed_t openrange;
@@ -337,6 +350,8 @@ void P_LineOpening (line_t* linedef)
 // lookups maintaining lists ot things inside
 // these structures need to be updated.
 //
+// [STRIFE] Verified unmodified
+//
 void P_UnsetThingPosition (mobj_t* thing)
 {
     int		blockx;
@@ -384,6 +399,8 @@ void P_UnsetThingPosition (mobj_t* thing)
 // Links a thing into both a block and a subsector
 // based on it's x y.
 // Sets thing->subsector properly
+//
+// [STRIFE] Verified unmodified
 //
 void
 P_SetThingPosition (mobj_t* thing)
@@ -461,39 +478,45 @@ P_SetThingPosition (mobj_t* thing)
 // to P_BlockLinesIterator, then make one or more calls
 // to it.
 //
+// haleyjd 20110203:
+// [STRIFE] Modified to track blockingline
+//
 boolean
 P_BlockLinesIterator
-( int			x,
-  int			y,
+( int           x,
+  int           y,
   boolean(*func)(line_t*) )
 {
-    int			offset;
-    short*		list;
-    line_t*		ld;
-	
+    int         offset;
+    short*      list;
+    line_t*     ld;
+
     if (x<0
-	|| y<0
-	|| x>=bmapwidth
-	|| y>=bmapheight)
+        || y<0
+        || x >= bmapwidth
+        || y >= bmapheight)
     {
-	return true;
+        return true;
     }
-    
-    offset = y*bmapwidth+x;
-	
-    offset = *(blockmap+offset);
 
-    for ( list = blockmaplump+offset ; *list != -1 ; list++)
+    offset = y*bmapwidth + x;
+
+    offset = *(blockmap + offset);
+
+    for (list = blockmaplump + offset; *list != -1; list++)
     {
-	ld = &lines[*list];
+        ld = &lines[*list];
 
-	if (ld->validcount == validcount)
-	    continue; 	// line has already been checked
+        // [STRIFE]: set blockingline (see P_XYMovement @ p_mobj.c)
+        blockingline = ld;
 
-	ld->validcount = validcount;
-		
-	if ( !func(ld) )
-	    return false;
+        if (ld->validcount == validcount)
+            continue; 	// line has already been checked
+
+        ld->validcount = validcount;
+
+        if (!func(ld))
+            return false;
     }
     return true;	// everything was checked
 }
@@ -501,6 +524,8 @@ P_BlockLinesIterator
 
 //
 // P_BlockThingsIterator
+//
+// [STRIFE] Verified unmodified
 //
 boolean
 P_BlockThingsIterator
@@ -534,12 +559,12 @@ P_BlockThingsIterator
 //
 // INTERCEPT ROUTINES
 //
-intercept_t	intercepts[MAXINTERCEPTS];
-intercept_t*	intercept_p;
+intercept_t     intercepts[MAXINTERCEPTS];
+intercept_t*    intercept_p;
 
-divline_t 	trace;
-boolean 	earlyout;
-int		ptflags;
+divline_t       trace;
+boolean         earlyout;
+int             ptflags;
 
 //
 // PIT_AddLineIntercepts.
@@ -551,52 +576,61 @@ int		ptflags;
 // are on opposite sides of the trace.
 // Returns true if earlyout and a solid line hit.
 //
+// haleyjd 20110204 [STRIFE]: Added Rogue's fix for intercepts overflows
+//
 boolean
 PIT_AddLineIntercepts (line_t* ld)
 {
-    int			s1;
-    int			s2;
-    fixed_t		frac;
-    divline_t		dl;
-	
+    int             s1;
+    int             s2;
+    fixed_t         frac;
+    divline_t       dl;
+
     // avoid precision problems with two routines
-    if ( trace.dx > FRACUNIT*16
-	 || trace.dy > FRACUNIT*16
-	 || trace.dx < -FRACUNIT*16
-	 || trace.dy < -FRACUNIT*16)
+    if (trace.dx > FRACUNIT * 16
+        || trace.dy > FRACUNIT * 16
+        || trace.dx < -FRACUNIT * 16
+        || trace.dy < -FRACUNIT * 16)
     {
-	s1 = P_PointOnDivlineSide (ld->v1->x, ld->v1->y, &trace);
-	s2 = P_PointOnDivlineSide (ld->v2->x, ld->v2->y, &trace);
+        s1 = P_PointOnDivlineSide(ld->v1->x, ld->v1->y, &trace);
+        s2 = P_PointOnDivlineSide(ld->v2->x, ld->v2->y, &trace);
     }
     else
     {
-	s1 = P_PointOnLineSide (trace.x, trace.y, ld);
-	s2 = P_PointOnLineSide (trace.x+trace.dx, trace.y+trace.dy, ld);
+        s1 = P_PointOnLineSide(trace.x, trace.y, ld);
+        s2 = P_PointOnLineSide(trace.x + trace.dx, trace.y + trace.dy, ld);
     }
-    
+
     if (s1 == s2)
-	return true;	// line isn't crossed
-    
+        return true;    // line isn't crossed
+
     // hit the line
-    P_MakeDivline (ld, &dl);
-    frac = P_InterceptVector (&trace, &dl);
+    P_MakeDivline(ld, &dl);
+    frac = P_InterceptVector(&trace, &dl);
 
     if (frac < 0)
-	return true;	// behind source
-	
+        return true;    // behind source
+
     // try to early out the check
     if (earlyout
-	&& frac < FRACUNIT
-	&& !ld->backsector)
+        && frac < FRACUNIT
+        && !ld->backsector)
     {
-	return false;	// stop checking
+        return false;   // stop checking
     }
-    
-	
+
+
     intercept_p->frac = frac;
     intercept_p->isaline = true;
     intercept_p->d.line = ld;
     intercept_p++;
+
+    // haleyjd 20110204 [STRIFE]
+    // Evidently Rogue had trouble with intercepts overflows during
+    // development, as they added this check here which will stop adding
+    // intercepts if the array would be overflown.
+    if (intercept_p > &intercepts[MAXINTERCEPTS - 2])
+        return false;
 
     return true;	// continue
 }
@@ -608,62 +642,67 @@ PIT_AddLineIntercepts (line_t* ld)
 //
 boolean PIT_AddThingIntercepts (mobj_t* thing)
 {
-    fixed_t		x1;
-    fixed_t		y1;
-    fixed_t		x2;
-    fixed_t		y2;
-    
-    int			s1;
-    int			s2;
-    
-    boolean		tracepositive;
+    fixed_t     x1;
+    fixed_t     y1;
+    fixed_t     x2;
+    fixed_t     y2;
 
-    divline_t		dl;
-    
-    fixed_t		frac;
-	
+    int         s1;
+    int         s2;
+
+    boolean     tracepositive;
+
+    divline_t   dl;
+
+    fixed_t     frac;
+
     tracepositive = (trace.dx ^ trace.dy)>0;
-		
+
     // check a corner to corner crossection for hit
     if (tracepositive)
     {
-	x1 = thing->x - thing->radius;
-	y1 = thing->y + thing->radius;
-		
-	x2 = thing->x + thing->radius;
-	y2 = thing->y - thing->radius;			
+        x1 = thing->x - thing->radius;
+        y1 = thing->y + thing->radius;
+
+        x2 = thing->x + thing->radius;
+        y2 = thing->y - thing->radius;
     }
     else
     {
-	x1 = thing->x - thing->radius;
-	y1 = thing->y - thing->radius;
-		
-	x2 = thing->x + thing->radius;
-	y2 = thing->y + thing->radius;			
+        x1 = thing->x - thing->radius;
+        y1 = thing->y - thing->radius;
+
+        x2 = thing->x + thing->radius;
+        y2 = thing->y + thing->radius;
     }
-    
-    s1 = P_PointOnDivlineSide (x1, y1, &trace);
-    s2 = P_PointOnDivlineSide (x2, y2, &trace);
+
+    s1 = P_PointOnDivlineSide(x1, y1, &trace);
+    s2 = P_PointOnDivlineSide(x2, y2, &trace);
 
     if (s1 == s2)
-	return true;		// line isn't crossed
-	
+        return true;        // line isn't crossed
+
     dl.x = x1;
     dl.y = y1;
-    dl.dx = x2-x1;
-    dl.dy = y2-y1;
-    
-    frac = P_InterceptVector (&trace, &dl);
+    dl.dx = x2 - x1;
+    dl.dy = y2 - y1;
+
+    frac = P_InterceptVector(&trace, &dl);
 
     if (frac < 0)
-	return true;		// behind source
+        return true;        // behind source
 
     intercept_p->frac = frac;
     intercept_p->isaline = false;
     intercept_p->d.thing = thing;
     intercept_p++;
 
-    return true;		// keep going
+    // haleyjd 20110204 [STRIFE]: As above, protection against intercepts
+    // overflows, courtesy of Rogue Software.
+    if (intercept_p > &intercepts[MAXINTERCEPTS - 2])
+        return false;
+
+    return true;        // keep going
 }
 
 
@@ -671,6 +710,8 @@ boolean PIT_AddThingIntercepts (mobj_t* thing)
 // P_TraverseIntercepts
 // Returns true if the traverser function returns true
 // for all lines.
+// 
+// [STRIFE] Verified unmodified.
 // 
 boolean
 P_TraverseIntercepts
@@ -731,6 +772,8 @@ P_TraverseIntercepts
 // calling the traverser function for each.
 // Returns true if the traverser function returns true
 // for all lines.
+//
+// [STRIFE] Verified unmodified
 //
 boolean
 P_PathTraverse
@@ -871,6 +914,3 @@ P_PathTraverse
     // go through the sorted list
     return P_TraverseIntercepts ( trav, FRACUNIT );
 }
-
-
-

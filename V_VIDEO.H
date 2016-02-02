@@ -65,15 +65,29 @@ V_CopyRect
   int		desty,
   int		destscrn );
 
-void
+boolean
 V_DrawPatch
 ( int		x,
   int		y,
   int		scrn,
   patch_t*	patch);
 
-void
+boolean
+V_DrawXlaPatch
+( int		x,
+  int		y,
+  int		scrn,
+  patch_t*	patch);
+
+boolean
 V_DrawPatchDirect
+( int		x,
+  int		y,
+  int		scrn,
+  patch_t*	patch );
+
+boolean
+V_DrawXlaDirect
 ( int		x,
   int		y,
   int		scrn,

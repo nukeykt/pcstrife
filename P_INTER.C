@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -30,11 +31,21 @@
 #include "am_map.h"
 
 #include "p_local.h"
-
+#include "p_dialog.h"   // villsa [STRIFE]
 #include "s_sound.h"
 
 #include "p_inter.h"
 
+#include "hu_stuff.h"   // villsa [STRIFE]
+#include "z_zone.h"     // villsa [STRIFE]
+
+// haleyjd [STRIFE]
+#include "w_wad.h"
+#include "p_pspr.h"
+#include "p_dialog.h"
+#include "f_finale.h"
+
+#include "i_sound.h"
 
 #define BONUSADD	6
 
@@ -43,8 +54,9 @@
 
 // a weapon is found with two clip loads,
 // a big item has five clip loads
-int	maxammo[NUMAMMO] = {200, 50, 300, 50};
-int	clipammo[NUMAMMO] = {10, 4, 20, 1};
+// villsa [STRIFE] updated arrays
+int	maxammo[NUMAMMO] = {250, 50, 25, 400, 100, 30, 16};
+int	clipammo[NUMAMMO] = {10, 4, 20, 4, 6, 4};
 
 
 //
@@ -57,6 +69,8 @@ int	clipammo[NUMAMMO] = {10, 4, 20, 1};
 // not the individual count (0= 1/2 clip).
 // Returns false if the ammo can't be picked up at all
 //
+// [STRIFE] Modified for Strife ammo types
+//
 
 boolean
 P_GiveAmmo
@@ -65,85 +79,79 @@ P_GiveAmmo
   int		num )
 {
     int		oldammo;
-	
+
     if (ammo == am_noammo)
-	return false;
-		
-    if (ammo < 0 || ammo > NUMAMMO)
-	I_Error ("P_GiveAmmo: bad type %i", ammo);
-		
-    if ( player->ammo[ammo] == player->maxammo[ammo]  )
-	return false;
-		
+        return false;
+
+    if (ammo > NUMAMMO)
+        I_Error("P_GiveAmmo: bad type %i", ammo);
+
+    if (player->ammo[ammo] == player->maxammo[ammo])
+        return false;
+
     if (num)
-	num *= clipammo[ammo];
+        num *= clipammo[ammo];
     else
-	num = clipammo[ammo]/2;
-    
+        num = clipammo[ammo] / 2;
+
     if (gameskill == sk_baby
-	|| gameskill == sk_nightmare)
+        || gameskill == sk_nightmare)
     {
-	// give double ammo in trainer mode,
-	// you'll need in nightmare
-	num <<= 1;
+        // give double ammo in trainer mode,
+        // you'll need in nightmare
+        num <<= 1;
     }
-    
-		
+
+
     oldammo = player->ammo[ammo];
     player->ammo[ammo] += num;
 
     if (player->ammo[ammo] > player->maxammo[ammo])
-	player->ammo[ammo] = player->maxammo[ammo];
+        player->ammo[ammo] = player->maxammo[ammo];
 
     // If non zero ammo, 
     // don't change up weapons,
     // player was lower on purpose.
     if (oldammo)
-	return true;	
+        return true;
 
     // We were down to zero,
     // so select a new weapon.
     // Preferences are not user selectable.
-    switch (ammo)
+
+    // villsa [STRIFE] ammo update
+    // where's the check for grenades? - haleyjd: verified no switch to grenades
+    //   haleyjd 10/03/10: don't change to electric bow when picking up poison
+    //   arrows.
+    if (!player->readyweapon)
     {
-      case am_clip:
-	if (player->readyweapon == wp_fist)
-	{
-	    if (player->weaponowned[wp_chaingun])
-		player->pendingweapon = wp_chaingun;
-	    else
-		player->pendingweapon = wp_pistol;
-	}
-	break;
-	
-      case am_shell:
-	if (player->readyweapon == wp_fist
-	    || player->readyweapon == wp_pistol)
-	{
-	    if (player->weaponowned[wp_shotgun])
-		player->pendingweapon = wp_shotgun;
-	}
-	break;
-	
-      case am_cell:
-	if (player->readyweapon == wp_fist
-	    || player->readyweapon == wp_pistol)
-	{
-	    if (player->weaponowned[wp_plasma])
-		player->pendingweapon = wp_plasma;
-	}
-	break;
-	
-      case am_misl:
-	if (player->readyweapon == wp_fist)
-	{
-	    if (player->weaponowned[wp_missile])
-		player->pendingweapon = wp_missile;
-	}
-      default:
-	break;
+        switch (ammo)
+        {
+        case am_bullets:
+            if (player->weaponowned[wp_rifle])
+                player->pendingweapon = wp_rifle;
+            break;
+
+        case am_elecbolts:
+            if (player->weaponowned[wp_elecbow])
+                player->pendingweapon = wp_elecbow;
+            break;
+
+        case am_cell:
+            if (player->weaponowned[wp_mauler])
+                player->pendingweapon = wp_mauler;
+            break;
+
+        case am_missiles:
+            if (player->weaponowned[wp_missile])
+                player->pendingweapon = wp_missile;
+            break;
+
+        default:
+            break;
+        }
     }
-	
+
     return true;
 }
 
@@ -151,6 +159,8 @@ P_GiveAmmo
 //
 // P_GiveWeapon
 // The weapon name may have a MF_DROPPED flag ored in.
+//
+// villsa [STRIFE] some stuff has been changed/moved around
 //
 boolean
 P_GiveWeapon
@@ -160,50 +170,74 @@ P_GiveWeapon
 {
     boolean	gaveammo;
     boolean	gaveweapon;
-	
-    if (netgame
-	&& (deathmatch!=2)
-	 && !dropped )
+
+    // villsa [STRIFE] new code for giving alternate version
+    // of the weapon to player
+    if (player->weaponowned[weapon])
+        gaveweapon = false;
+    else
     {
-	// leave placed weapons forever on net games
-	if (player->weaponowned[weapon])
-	    return false;
+        gaveweapon = true;
+        player->weaponowned[weapon] = true;
 
-	player->bonuscount += BONUSADD;
-	player->weaponowned[weapon] = true;
+        // Alternate "sister" weapons that you also get as a bonus:
+        switch (weapon)
+        {
+        case wp_elecbow:
+            player->weaponowned[wp_poisonbow] = true;
+            break;
 
-	if (deathmatch)
-	    P_GiveAmmo (player, weaponinfo[weapon].ammo, 5);
-	else
-	    P_GiveAmmo (player, weaponinfo[weapon].ammo, 2);
-	player->pendingweapon = weapon;
+        case wp_hegrenade:
+            player->weaponowned[wp_wpgrenade] = true;
+            break;
 
-	if (player == &players[consoleplayer])
-	    S_StartSound (NULL, sfx_wpnup);
-	return false;
+        case wp_mauler:
+            player->weaponowned[wp_torpedo] = true;
+            break;
+
+        default:
+            break;
+        }
+
+        // check for the standard weapons only
+        if (weapon > player->readyweapon && weapon <= wp_sigil)
+            player->pendingweapon = weapon;
+
     }
-	
+
+    if (netgame
+        && (deathmatch != 2)
+        && !dropped)
+    {
+        // leave placed weapons forever on net games
+        if (!gaveweapon)
+            return false;
+
+        player->bonuscount += BONUSADD;
+        player->weaponowned[weapon] = true;
+
+        if (deathmatch)
+            P_GiveAmmo(player, weaponinfo[weapon].ammo, 5);
+        else
+            P_GiveAmmo(player, weaponinfo[weapon].ammo, 2);
+
+        if (player == &players[consoleplayer])
+            S_StartSound(NULL, sfx_wpnup);
+        return false;
+    }
+
     if (weaponinfo[weapon].ammo != am_noammo)
     {
-	// give one clip with a dropped weapon,
-	// two clips with a found weapon
-	if (dropped)
-	    gaveammo = P_GiveAmmo (player, weaponinfo[weapon].ammo, 1);
-	else
-	    gaveammo = P_GiveAmmo (player, weaponinfo[weapon].ammo, 2);
+        // give one clip with a dropped weapon,
+        // two clips with a found weapon
+        if (dropped)
+            gaveammo = P_GiveAmmo(player, weaponinfo[weapon].ammo, 1);
+        else
+            gaveammo = P_GiveAmmo(player, weaponinfo[weapon].ammo, 2);
     }
     else
-	gaveammo = false;
-	
-    if (player->weaponowned[weapon])
-	gaveweapon = false;
-    else
-    {
-	gaveweapon = true;
-	player->weaponowned[weapon] = true;
-	player->pendingweapon = weapon;
-    }
-	
+        gaveammo = false;
+
     return (gaveweapon || gaveammo);
 }
 
@@ -213,19 +247,54 @@ P_GiveWeapon
 // P_GiveBody
 // Returns false if the body isn't needed at all
 //
-boolean
-P_GiveBody
-( player_t*	player,
-  int		num )
+// villsa [STRIFE] a lot of changes have been added for stamina
+//
+boolean P_GiveBody(player_t* player, int num)
 {
-    if (player->health >= MAXHEALTH)
-	return false;
-		
-    player->health += num;
-    if (player->health > MAXHEALTH)
-	player->health = MAXHEALTH;
-    player->mo->health = player->health;
-	
+    int healing;
+
+    if (num >= 0) // haleyjd 20100923: fixed to give proper amount of health
+    {
+        // any healing to do?
+        if (player->health >= player->stamina + MAXHEALTH)
+            return false;
+
+        // give, and cap to maxhealth
+        player->health += num;
+
+        if (player->health >= player->stamina + MAXHEALTH)
+            player->health = player->stamina + MAXHEALTH;
+
+        // Set mo->health for consistency.
+        player->mo->health = player->health;
+    }
+    else
+    {
+        // [STRIFE] handle healing from the Front's medic
+        // The amount the player's health will be set to scales up with stamina
+        // increases.
+        // Ex 1: On the wimpiest skill level, -100 is sent in. This restores 
+        //       full health no matter what your stamina.
+        //       (100*100)/100 = 100
+        //       (200*100)/100 = 200
+        // Ex 2: On the most stringent skill levels, -50 is sent in. This will
+        //       restore at most half of your health.
+        //       (100*50)/100 = 50
+        //       (200*50)/100 = 100
+        healing = ((player->health + MAXHEALTH) * -num) / MAXHEALTH;
+
+        // This is also the "threshold" of healing. You need less health than
+        // the amount that will be restored in order to get any benefit.
+        // So on the easiest skill you will always be fully healed.
+        // On the hardest skill you must have less than 50 health, and will
+        // only recover to 50 (assuming base stamina stat)
+        if (player->health >= healing)
+            return false;
+
+        // Set health. BUG: Oddly, mo->health is NOT set here...
+        player->health = healing;
+    }
+
     return true;
 }
 
@@ -236,16 +305,27 @@ P_GiveBody
 // Returns false if the armor is worse
 // than the current armor.
 //
+// [STRIFE] Modified for Strife armor items
+//
 boolean
 P_GiveArmor
 ( player_t*	player,
   int		armortype )
 {
-    int		hits;
+    int     hits;
+
+    // villsa [STRIFE]
+    if (armortype < 0)
+    {
+        if (player->armorpoints)
+            return false;
+
+        armortype = -armortype;
+    }
 	
     hits = armortype*100;
     if (player->armorpoints >= hits)
-	return false;	// don't pick up
+        return false;	// don't pick up
 		
     player->armortype = armortype;
     player->armorpoints = hits;
@@ -258,70 +338,95 @@ P_GiveArmor
 //
 // P_GiveCard
 //
-void
+// [STRIFE] Modified to use larger bonuscount
+//
+boolean
 P_GiveCard
 ( player_t*	player,
   card_t	card )
 {
     if (player->cards[card])
-	return;
-    
-    player->bonuscount = BONUSADD;
+	return false;
+
+    // villsa [STRIFE] multiply by 2
+    player->bonuscount = BONUSADD * 2;
     player->cards[card] = 1;
+    return true;
 }
 
 
 //
 // P_GivePower
 //
+// [STRIFE] Modifications for new powerups
+//
 boolean
 P_GivePower
 ( player_t*	player,
-  int /*powertype_t*/	power )
+  powertype_t	power )
 {
-    if (power == pw_invulnerability)
-    {
-	player->powers[power] = INVULNTICS;
-	return true;
-    }
-    
-    if (power == pw_invisibility)
-    {
-	player->powers[power] = INVISTICS;
-	player->mo->flags |= MF_SHADOW;
-	return true;
-    }
-    
-    if (power == pw_infrared)
-    {
-	player->powers[power] = INFRATICS;
-	return true;
-    }
-    
-    if (power == pw_ironfeet)
-    {
-	player->powers[power] = IRONTICS;
-	return true;
-    }
-    
-    if (power == pw_strength)
-    {
-	P_GiveBody (player, 100);
-	player->powers[power] = 1;
-	return true;
-    }
-	
     if (player->powers[power])
-	return false;	// already got it
-		
-    player->powers[power] = 1;
+    {
+        if (power != pw_invisibility || player->mo->flags & MF_MVIS)
+        {
+            return false;
+        }
+        player->mo->flags &= MF_SHADOW;
+        player->mo->flags |= MF_MVIS;
+        player->powers[pw_invisibility] = INVISTICS;
+
+        return true;
+    }
+
+    switch (power)
+    {
+    case pw_strength:
+        P_GiveBody(player, 100);
+        player->powers[pw_strength] = 1;
+        break;
+    case pw_invisibility:
+        player->powers[pw_invisibility] = INVISTICS;
+        player->mo->flags |= MF_SHADOW;
+        break;
+    case pw_ironfeet:
+        player->powers[pw_ironfeet] = IRONTICS;
+        break;
+    case pw_allmap:
+        if (gamemap < 40)
+        {
+            player->mapstate[gamemap] = true;
+        }
+        player->powers[pw_allmap] = 1;
+        break;
+    case pw_targeter:
+        // villsa [STRIFE]
+        player->powers[pw_targeter] = TARGTICS;
+        P_SetPsprite(player, ps_targcenter, S_TRGT_00); // 10
+        P_SetPsprite(player, ps_targleft,   S_TRGT_01); // 11
+        P_SetPsprite(player, ps_targright,  S_TRGT_02); // 12
+
+        player->psprites[ps_targcenter].sx  = (160*FRACUNIT);
+        player->psprites[ps_targcenter].sy  =
+        player->psprites[ps_targleft  ].sy  =
+        player->psprites[ps_targright ].sy  = (100*FRACUNIT);
+        break;
+    default:
+        player->powers[power] = 1;
+        break;
+    }
     return true;
 }
+
+
+// villsa [STRIFE]
+char pickupmsg[80];
 
 
 
 //
 // P_TouchSpecialThing
+//
+// [STRIFE] Rewritten for Strife collectables.
 //
 void
 P_TouchSpecialThing
@@ -332,417 +437,628 @@ P_TouchSpecialThing
     int		i;
     fixed_t	delta;
     int		sound;
-		
+
     delta = special->z - toucher->z;
 
     if (delta > toucher->height
-	|| delta < -8*FRACUNIT)
+        || delta < -8 * FRACUNIT)
     {
-	// out of reach
-	return;
+        // out of reach
+        return;
     }
-    
-	
-    sound = sfx_itemup;	
-    player = toucher->player;
 
     // Dead thing touching.
     // Can happen with a sliding player corpse.
     if (toucher->health <= 0)
-	return;
+        return;
+
+
+    sound = sfx_itemup;
+    player = toucher->player;
+
+    // villsa [STRIFE] damage toucher if special is spectral
+    // haleyjd 09/21/10: corrected to test for SPECTRE thingtypes specifically
+    switch (special->type)
+    {
+    case MT_SPECTRE_A:
+    case MT_SPECTRE_B:
+    case MT_SPECTRE_C:
+    case MT_SPECTRE_D:
+    case MT_SPECTRE_E:
+    case MT_ENTITY:
+    case MT_SUBENTITY:
+        P_DamageMobj(toucher, NULL, NULL, 5);
+        return;
+    default:
+        break;
+    }
+
+    // villsa [STRIFE]
+    pickupmsg[0] = 0;
 
     // Identify by sprite.
+    // villsa [STRIFE] new items
     switch (special->sprite)
     {
-	// armor
-      case SPR_ARM1:
-	if (!P_GiveArmor (player, 1))
-	    return;
-	player->message = GOTARMOR;
-	break;
-		
-      case SPR_ARM2:
-	if (!P_GiveArmor (player, 2))
-	    return;
-	player->message = GOTMEGA;
-	break;
-	
-	// bonus items
-      case SPR_BON1:
-	player->health++;		// can go over 100%
-	if (player->health > 200)
-	    player->health = 200;
-	player->mo->health = player->health;
-	player->message = GOTHTHBONUS;
-	break;
-	
-      case SPR_BON2:
-	player->armorpoints++;		// can go over 100%
-	if (player->armorpoints > 200)
-	    player->armorpoints = 200;
-	if (!player->armortype)
-	    player->armortype = 1;
-	player->message = GOTARMBONUS;
-	break;
-	
-      case SPR_SOUL:
-	player->health += 100;
-	if (player->health > 200)
-	    player->health = 200;
-	player->mo->health = player->health;
-	player->message = GOTSUPER;
-	sound = sfx_getpow;
-	break;
-	
-      case SPR_MEGA:
-	if (!commercial)
-	    return;
-	player->health = 200;
-	player->mo->health = player->health;
-	P_GiveArmor (player,2);
-	player->message = GOTMSPHERE;
-	sound = sfx_getpow;
-	break;
-	
-	// cards
-	// leave cards for everyone
-      case SPR_BKEY:
-	if (!player->cards[it_bluecard])
-	    player->message = GOTBLUECARD;
-	P_GiveCard (player, it_bluecard);
-	if (!netgame)
-	    break;
-	return;
-	
-      case SPR_YKEY:
-	if (!player->cards[it_yellowcard])
-	    player->message = GOTYELWCARD;
-	P_GiveCard (player, it_yellowcard);
-	if (!netgame)
-	    break;
-	return;
-	
-      case SPR_RKEY:
-	if (!player->cards[it_redcard])
-	    player->message = GOTREDCARD;
-	P_GiveCard (player, it_redcard);
-	if (!netgame)
-	    break;
-	return;
-	
-      case SPR_BSKU:
-	if (!player->cards[it_blueskull])
-	    player->message = GOTBLUESKUL;
-	P_GiveCard (player, it_blueskull);
-	if (!netgame)
-	    break;
-	return;
-	
-      case SPR_YSKU:
-	if (!player->cards[it_yellowskull])
-	    player->message = GOTYELWSKUL;
-	P_GiveCard (player, it_yellowskull);
-	if (!netgame)
-	    break;
-	return;
-	
-      case SPR_RSKU:
-	if (!player->cards[it_redskull])
-	    player->message = GOTREDSKULL;
-	P_GiveCard (player, it_redskull);
-	if (!netgame)
-	    break;
-	return;
-	
-	// medikits, heals
-      case SPR_STIM:
-	if (!P_GiveBody (player, 10))
-	    return;
-	player->message = GOTSTIM;
-	break;
-	
-      case SPR_MEDI:
-	if (!P_GiveBody (player, 25))
-	    return;
+    // bullets
+    case SPR_BLIT: // haleyjd: fixed missing MF_DROPPED check
+        if (special->flags & MF_DROPPED)
+        {
+            if (!P_GiveAmmo(player, am_bullets, false))
+                return;
+        }
+        else
+        {
+            if (!P_GiveAmmo(player, am_bullets, true))
+                return;
+        }
+        break;
 
-	if (player->health < 25)
-	    player->message = GOTMEDINEED;
-	else
-	    player->message = GOTMEDIKIT;
-	break;
+    // box of bullets
+    case SPR_BBOX:
+        if(!P_GiveAmmo(player, am_bullets, 5))
+            return;
+        break;
 
-	
-	// power ups
-      case SPR_PINV:
-	if (!P_GivePower (player, pw_invulnerability))
-	    return;
-	player->message = GOTINVUL;
-	sound = sfx_getpow;
-	break;
-	
-      case SPR_PSTR:
-	if (!P_GivePower (player, pw_strength))
-	    return;
-	player->message = GOTBERSERK;
-	if (player->readyweapon != wp_fist)
-	    player->pendingweapon = wp_fist;
-	sound = sfx_getpow;
-	break;
-	
-      case SPR_PINS:
-	if (!P_GivePower (player, pw_invisibility))
-	    return;
-	player->message = GOTINVIS;
-	sound = sfx_getpow;
-	break;
-	
-      case SPR_SUIT:
-	if (!P_GivePower (player, pw_ironfeet))
-	    return;
-	player->message = GOTSUIT;
-	sound = sfx_getpow;
-	break;
-	
-      case SPR_PMAP:
-	if (!P_GivePower (player, pw_allmap))
-	    return;
-	player->message = GOTMAP;
-	sound = sfx_getpow;
-	break;
-	
-      case SPR_PVIS:
-	if (!P_GivePower (player, pw_infrared))
-	    return;
-	player->message = GOTVISOR;
-	sound = sfx_getpow;
-	break;
-	
-	// ammo
-      case SPR_CLIP:
-	if (special->flags & MF_DROPPED)
-	{
-	    if (!P_GiveAmmo (player,am_clip,0))
-		return;
-	}
-	else
-	{
-	    if (!P_GiveAmmo (player,am_clip,1))
-		return;
-	}
-	player->message = GOTCLIP;
-	break;
-	
-      case SPR_AMMO:
-	if (!P_GiveAmmo (player, am_clip,5))
-	    return;
-	player->message = GOTCLIPBOX;
-	break;
-	
-      case SPR_ROCK:
-	if (!P_GiveAmmo (player, am_misl,1))
-	    return;
-	player->message = GOTROCKET;
-	break;
-	
-      case SPR_BROK:
-	if (!P_GiveAmmo (player, am_misl,5))
-	    return;
-	player->message = GOTROCKBOX;
-	break;
-	
-      case SPR_CELL:
-	if (!P_GiveAmmo (player, am_cell,1))
-	    return;
-	player->message = GOTCELL;
-	break;
-	
-      case SPR_CELP:
-	if (!P_GiveAmmo (player, am_cell,5))
-	    return;
-	player->message = GOTCELLBOX;
-	break;
-	
-      case SPR_SHEL:
-	if (!P_GiveAmmo (player, am_shell,1))
-	    return;
-	player->message = GOTSHELLS;
-	break;
-	
-      case SPR_SBOX:
-	if (!P_GiveAmmo (player, am_shell,5))
-	    return;
-	player->message = GOTSHELLBOX;
-	break;
-	
-      case SPR_BPAK:
-	if (!player->backpack)
-	{
-	    for (i=0 ; i<NUMAMMO ; i++)
-		player->maxammo[i] *= 2;
-	    player->backpack = true;
-	}
-	for (i=0 ; i<NUMAMMO ; i++)
-	    P_GiveAmmo (player, i, 1);
-	player->message = GOTBACKPACK;
-	break;
-	
-	// weapons
-      case SPR_BFUG:
-	if (!P_GiveWeapon (player, wp_bfg, false) )
-	    return;
-	player->message = GOTBFG9000;
-	sound = sfx_wpnup;	
-	break;
-	
-      case SPR_MGUN:
-	if (!P_GiveWeapon (player, wp_chaingun, special->flags&MF_DROPPED) )
-	    return;
-	player->message = GOTCHAINGUN;
-	sound = sfx_wpnup;	
-	break;
-	
-      case SPR_CSAW:
-	if (!P_GiveWeapon (player, wp_chainsaw, false) )
-	    return;
-	player->message = GOTCHAINSAW;
-	sound = sfx_wpnup;	
-	break;
-	
-      case SPR_LAUN:
-	if (!P_GiveWeapon (player, wp_missile, false) )
-	    return;
-	player->message = GOTLAUNCHER;
-	sound = sfx_wpnup;	
-	break;
-	
-      case SPR_PLAS:
-	if (!P_GiveWeapon (player, wp_plasma, false) )
-	    return;
-	player->message = GOTPLASMA;
-	sound = sfx_wpnup;	
-	break;
-	
-      case SPR_SHOT:
-	if (!P_GiveWeapon (player, wp_shotgun, special->flags&MF_DROPPED ) )
-	    return;
-	player->message = GOTSHOTGUN;
-	sound = sfx_wpnup;	
-	break;
-		
-      case SPR_SGN2:
-	if (!P_GiveWeapon (player, wp_supershotgun, special->flags&MF_DROPPED ) )
-	    return;
-	player->message = GOTSHOTGUN2;
-	sound = sfx_wpnup;	
-	break;
-		
-      default:
-	I_Error ("P_SpecialThing: Unknown gettable thing");
+    // missile
+    case SPR_MSSL:
+        if(!P_GiveAmmo(player, am_missiles, 1))
+            return;
+        break;
+
+    // box of missiles
+    case SPR_ROKT:
+        if(!P_GiveAmmo(player, am_missiles, 5))
+            return;
+        break;
+
+    // battery
+    case SPR_BRY1:
+        if(!P_GiveAmmo(player, am_cell, 1))
+            return;
+        break;
+
+    // cell pack
+    case SPR_CPAC:
+        if(!P_GiveAmmo(player, am_cell, 5))
+            return;
+        break;
+
+    // poison bolts
+    case SPR_PQRL:
+        if(!P_GiveAmmo(player, am_poisonbolts, 5))
+            return;
+        break;
+
+    // electric bolts
+    case SPR_XQRL:
+        if(!P_GiveAmmo(player, am_elecbolts, 5))
+            return;
+        break;
+
+    // he grenades
+    case SPR_GRN1:
+        if(!P_GiveAmmo(player, am_hegrenades, 1))
+            return;
+        break;
+
+    // wp grenades
+    case SPR_GRN2:
+        if(!P_GiveAmmo(player, am_wpgrenades, 1))
+            return;
+        break;
+
+    // rifle
+    case SPR_RIFL:
+        if(!P_GiveWeapon(player, wp_rifle, special->flags & MF_DROPPED))
+            return;
+        sound = sfx_wpnup; // haleyjd: SHK-CHK!
+        break;
+
+    // flame thrower
+    case SPR_FLAM:
+        if(!P_GiveWeapon(player, wp_flame, false))
+            return;
+        // haleyjd: gives extra ammo.
+        P_GiveAmmo(player, am_cell, 3);
+        sound = sfx_wpnup; // haleyjd: SHK-CHK!
+        break;
+
+    // missile launcher
+    case SPR_MMSL:
+        if(!P_GiveWeapon(player, wp_missile, false))
+            return;
+        sound = sfx_wpnup; // haleyjd: SHK-CHK!
+        break;
+
+    // grenade launcher
+    case SPR_GRND:
+        if(!P_GiveWeapon(player, wp_hegrenade, special->flags & MF_DROPPED))
+            return;
+        sound = sfx_wpnup; // haleyjd: SHK-CHK!
+        break;
+
+    // mauler
+    case SPR_TRPD:
+        if(!P_GiveWeapon(player, wp_mauler, false))
+            return;
+        sound = sfx_wpnup; // haleyjd: SHK-CHK!
+        break;
+
+    // electric bolt crossbow
+    case SPR_CBOW:
+        if(!P_GiveWeapon(player, wp_elecbow, special->flags & MF_DROPPED))
+            return;
+        sound = sfx_wpnup; // haleyjd: SHK-CHK!
+        break;
+
+    // haleyjd 09/21/10: missed case: THE SIGIL!
+    case SPR_SIGL:
+        if(!P_GiveWeapon(player, wp_sigil, special->flags & MF_DROPPED))
+        {
+            player->sigiltype = special->frame;
+            return;
+        }
+        
+        if(netgame)
+            player->sigiltype = 4;
+
+        player->pendingweapon = wp_sigil;
+        player->st_update = true;
+        if(deathmatch == true)
+            return;
+        sound = sfx_wpnup;
+        break;
+
+    // backpack
+    case SPR_BKPK:
+        if(!player->backpack)
+        {
+            for(i = 0; i < NUMAMMO; i++)
+                player->maxammo[i] *= 2;
+
+            player->backpack = true;
+        }
+        for(i = 0; i < NUMAMMO; i++)
+            P_GiveAmmo(player, i, 1);
+        break;
+
+    // 1 Gold
+    case SPR_COIN:
+        P_GiveInventoryItem(player, SPR_COIN, MT_MONY_1);
+        break;
+
+    // 10 Gold
+    case SPR_CRED:
+        for(i = 0; i < 10; i++)
+            P_GiveInventoryItem(player, SPR_COIN, MT_MONY_1);
+        break;
+
+    // 25 Gold
+    case SPR_SACK:
+        // haleyjd 09/21/10: missed code: if a SPR_SACK object has negative
+        // health, it will give that much gold - STRIFE-TODO: verify
+        if(special->health < 0)
+        {
+            for(i = special->health; i != 0; i++)
+                P_GiveInventoryItem(player, SPR_COIN, MT_MONY_1);
+        }
+        else
+        {
+            for(i = 0; i < 25; i++)
+                P_GiveInventoryItem(player, SPR_COIN, MT_MONY_1);
+        }
+        break;
+
+    // 50 Gold
+    case SPR_CHST:
+        for(i = 0; i < 50; i++)
+            P_GiveInventoryItem(player, SPR_COIN, MT_MONY_1);
+        break;
+
+    // Leather Armor
+    case SPR_ARM1:
+        if(!P_GiveArmor(player, -2))
+            if(!P_GiveInventoryItem(player, special->sprite, special->type))
+                pickupmsg[0] = '!';
+        break;
+
+    // Metal Armor
+    case SPR_ARM2:
+        if(!P_GiveArmor(player, -1))
+            if(!P_GiveInventoryItem(player, special->sprite, special->type))
+                pickupmsg[0] = '!';
+        break;
+
+    // All-map powerup
+    case SPR_PMAP:
+        if(!P_GivePower(player, pw_allmap))
+            return;
+        sound = sfx_yeah;
+        break;
+
+    // The Comm Unit - because you need Blackbird whining in your ear the
+    // whole time and telling you how lost she is :P
+    case SPR_COMM:
+        if(!P_GivePower(player, pw_communicator))
+            return;
+        sound = sfx_yeah;
+        break;
+
+    // haleyjd 09/21/10: missed case - Shadow Armor; though, I do not know why
+    // this has a case distinct from generic inventory items... Maybe it started
+    // out as an auto-use-if-possible item much like regular armor...
+    case SPR_SHD1:
+        if(!P_GiveInventoryItem(player, SPR_SHD1, special->type))
+            pickupmsg[0] = '!';
+        break;
+
+    case SPR_TOKN:
+        P_GiveItemToPlayer(player, SPR_TOKN, special->type);
+        break;
+
+    // villsa [STRIFE] check default items
+    default:
+        if(special->type >= MT_KEY_BASE && special->type <= MT_NEWKEY5)
+        {
+            // haleyjd 09/21/10: Strife player still picks up keys that
+            // he has already found. (break, not return)
+            P_GiveCard(player, special->type - MT_KEY_BASE);
+        }
+        else
+        {
+            if(!P_GiveInventoryItem(player, special->sprite, special->type))
+                pickupmsg[0] = '!';
+        }
+        break;
     }
-	
-    if (special->flags & MF_COUNTITEM)
-	player->itemcount++;
-    P_RemoveMobj (special);
+
+    // villsa [STRIFE] set message
+    if(!pickupmsg[0])
+    {
+        if(special->info->name)
+        {
+            sprintf(pickupmsg, "You picked up the %s.", special->info->name);
+        }
+        else
+            sprintf(pickupmsg, "You picked up the item.");
+    }
+    // use the first character to indicate that the player is full on items
+    else if(pickupmsg[0] == '!')
+    {
+        sprintf(pickupmsg, "You cannot hold any more.");
+        player->message = pickupmsg;
+        return;
+    }
+
+    if(special->flags & MF_GIVEQUEST)
+    {
+        if(special->info->speed != 8 || !(player->questflags & QF_QUEST6))
+            player->questflags |= 1 << (special->info->speed - 1);
+    }
+
+
+    // haleyjd 08/30/10: [STRIFE] No itemcount
+    //if (special->flags & MF_COUNTITEM)
+    //    player->itemcount++;
+
+    P_RemoveMobj(special);
+    player->message = pickupmsg;
     player->bonuscount += BONUSADD;
-    if (player == &players[consoleplayer])
-	S_StartSound (NULL, sound);
+
+    if(player == &players[consoleplayer])
+        S_StartSound(NULL, sound);
 }
 
+// villsa [STRIFE]
+char plrkilledmsg[80];
 
 //
 // KillMobj
+//
+// [STRIFE] Major modifications for drop types, no tic randomization, etc.
 //
 void
 P_KillMobj
 ( mobj_t*	source,
   mobj_t*	target )
 {
-    mobjtype_t	item;
-    mobj_t*	mo;
-	
-    target->flags &= ~(MF_SHOOTABLE|MF_FLOAT|MF_SKULLFLY);
+    mobjtype_t  item;
+    mobj_t*     mo;
+    line_t      junk;
+    int         i;
+    int         lump;
 
-    if (target->type != MT_SKULL)
-	target->flags &= ~MF_NOGRAVITY;
+
+    target->height = FRACUNIT;  // villsa [STRIFE] set to fracunit instead of >>= 2
+
+    // villsa [STRIFE] corpse and dropoff are removed, but why when these two flags
+    // are set a few lines later? watcom nonsense perhaps?
+    target->flags &= ~(MF_SHOOTABLE | MF_FLOAT | MF_BOUNCE | MF_CORPSE | MF_DROPOFF);
 
     target->flags |= MF_CORPSE|MF_DROPOFF;
-    target->height >>= 2;
+
+    // villsa [STRIFE] unused
+    /*
+	if (target->type != MT_SKULL)
+	target->flags &= ~MF_NOGRAVITY;
+    */
 
     if (source && source->player)
     {
-	// count for intermission
-	if (target->flags & MF_COUNTKILL)
-	    source->player->killcount++;	
+        // count for intermission
+        if (target->flags & MF_COUNTKILL)
+            source->player->killcount++;
 
-	if (target->player)
-	    source->player->frags[target->player-players]++;
+        if (target->player)
+        {
+            source->player->frags[target->player - players]++;
+
+            // villsa [STRIFE] new messages when fragging players
+            // haleyjd 20141024: corrected; uses player->allegiance, not mo->miscdata
+            sprintf(plrkilledmsg, "%s killed %s",
+                player_names[source->player->allegiance],
+                player_names[target->player->allegiance]);
+
+            if (netgame)
+                players[consoleplayer].message = plrkilledmsg;
+        }
     }
-    else if (!netgame && (target->flags & MF_COUNTKILL) )
+    else if (!netgame && (target->flags & MF_COUNTKILL))
     {
-	// count all monster deaths,
-	// even those caused by other monsters
-	players[0].killcount++;
+        // count all monster deaths,
+        // even those caused by other monsters
+        players[0].killcount++;
     }
-    
+
     if (target->player)
     {
-	// count environment kills against you
-	if (!source)	
-	    target->player->frags[target->player-players]++;
-			
-	target->flags &= ~MF_SOLID;
-	target->player->playerstate = PST_DEAD;
-	P_DropWeapon (target->player);
+        // count environment kills against you
+        if (!source)
+            target->player->frags[target->player - players]++;
 
-	if (target->player == &players[consoleplayer]
-	    && automapactive)
-	{
-	    // don't die in auto map,
-	    // switch view prior to dying
-	    AM_Stop ();
-	}
-	
+        if (gamemap == 29 && !netgame)
+        {
+            // haleyjd 09/13/10: [STRIFE] Give player the bad ending.
+            F_StartFinale();
+            return;
+        }
+
+        // villsa [STRIFE] spit out inventory items when killed
+        if (netgame)
+        {
+            int amount;
+            mobj_t* loot;
+            int slot = 0;
+
+            while (1)
+            {
+                if (target->player->inventory[0].amount <= 0)
+                    break;
+
+                item = target->player->inventory[0].type;
+                if (item == MT_MONY_1)
+                {
+                    loot = P_SpawnMobj(target->x, target->y,
+                        target->z + (24 * FRACUNIT), MT_MONY_25);
+
+                    // [STRIFE] TODO - what the hell is it doing here?
+                    loot->health = target->player->inventory[0].amount;
+                    loot->health = -target->player->inventory[0].amount;
+
+                    slot = 0;
+                    amount = target->player->inventory[0].amount;
+                }
+                else
+                {
+                    loot = P_SpawnMobj(target->x, target->y,
+                        target->z + (24 * FRACUNIT), item);
+                    slot = 0;
+                    amount = 1;
+                }
+
+                P_RemoveInventoryItem(target->player, slot, amount);
+                loot->momx += ((P_Random() & 7) - (P_Random() & 7)) << FRACBITS;
+                loot->momy += ((P_Random() & 7) + 1) << FRACBITS;
+                loot->flags |= MF_DROPPED;
+            }
+        }
+
+        target->player->playerstate = PST_DEAD;
+        target->player->mo->momz = 5 * FRACUNIT;  // [STRIFE]: small hop!
+        P_DropWeapon(target->player);
+
+        if (target->player == &players[consoleplayer]
+            && automapactive)
+        {
+            // don't die in auto map,
+            // switch view prior to dying
+            AM_Stop();
+        }
+
     }
 
-    if (target->health < -target->info->spawnhealth 
-	&& target->info->xdeathstate)
+    // villsa [STRIFE] some modifications to setting states
+    if (target->state != &states[S_BURN_23])
     {
-	P_SetMobjState (target, target->info->xdeathstate);
+        if (target->health == -6666)
+            P_SetMobjState(target, S_DISR_00);  // 373
+        else
+        {
+            if (target->health <= -target->info->spawnhealth
+                && target->info->xdeathstate)
+                P_SetMobjState(target, target->info->xdeathstate);
+            else
+                P_SetMobjState(target, target->info->deathstate);
+        }
     }
-    else
-	P_SetMobjState (target, target->info->deathstate);
-    target->tics -= P_Random()&3;
 
-    if (target->tics < 1)
-	target->tics = 1;
-		
-    //	I_StartSound (&actor->r, actor->info->deathsound);
-
+    // villsa [STRIFE] no death tics randomization
 
     // Drop stuff.
-    // This determines the kind of object spawned
-    // during the death frame of a thing.
-    switch (target->type)
+    // villsa [STRIFE] get item from dialog target
+    item = P_DialogFind(target->type, target->miscdata)->dropitem;
+
+    if (!item)
     {
-      case MT_WOLFSS:
-      case MT_POSSESSED:
-	item = MT_CLIP;
-	break;
-	
-      case MT_SHOTGUY:
-	item = MT_SHOTGUN;
-	break;
-	
-      case MT_CHAINGUY:
-	item = MT_CHAINGUN;
-	break;
-	
-      default:
-	return;
+        // villsa [STRIFE] drop default items
+        switch (target->type)
+        {
+        case MT_ORACLE:
+            item = MT_MEAT;
+            break;
+
+        case MT_PROGRAMMER:
+            item = MT_SIGIL_A;
+            break;
+
+        case MT_PRIEST:
+            item = MT_JUNK;
+            break;
+
+        case MT_BISHOP:
+            item = MT_AMINIBOX;
+            break;
+
+        case MT_PGUARD:
+        case MT_CRUSADER:
+            item = MT_ACELL;
+            break;
+
+        case MT_RLEADER:
+            item = MT_AAMMOBOX;
+            break;
+
+        case MT_GUARD1:
+        case MT_REBEL1:
+        case MT_SHADOWGUARD:
+            item = MT_ACLIP;
+            break;
+
+        case MT_SPECTRE_B:
+            item = MT_SIGIL_B;
+            break;
+
+        case MT_SPECTRE_C:
+            item = MT_SIGIL_C;
+            break;
+
+        case MT_SPECTRE_D:
+            item = MT_SIGIL_D;
+            break;
+
+        case MT_SPECTRE_E:
+            item = MT_SIGIL_E;
+            break;
+
+        case MT_COUPLING:
+            junk.tag = 225;
+            EV_DoDoor(&junk, vld_close);
+
+            junk.tag = 44;
+            EV_DoFloor(&junk, lowerFloor);
+
+            I_StartVoice("VOC106");
+            lump = W_CheckNumForName("LOG106");
+            if (lump > 0)
+            {
+                strncpy(mission_objective, W_CacheLumpNum(lump, PU_CACHE),
+                    OBJECTIVE_LEN);
+            }
+
+            item = MT_COUPLING_BROKEN;
+            players[0].questflags |= (1 << (mobjinfo[MT_COUPLING].speed - 1));
+            break;
+
+        default:
+            return;
+        }
     }
 
-    mo = P_SpawnMobj (target->x,target->y,ONFLOORZ, item);
-    mo->flags |= MF_DROPPED;	// special versions of items
+    // handle special case for scripted target's dropped item
+    switch (item)
+    {
+    case MT_TOKEN_SHOPCLOSE:
+        junk.tag = 222;
+        EV_DoDoor(&junk, vld_close);
+
+        sprintf(plrkilledmsg, "You're dead!  You set off the alarm.");
+        P_NoiseAlert(players[0].mo, players[0].mo);
+        if (!deathmatch)
+            players[consoleplayer].message = plrkilledmsg;
+
+        return;
+
+    case MT_TOKEN_PRISON_PASS:
+        junk.tag = 223;
+        EV_DoDoor(&junk, vld_open);
+        return;
+
+    case MT_TOKEN_DOOR3:
+        junk.tag = 224;
+        EV_DoDoor(&junk, vld_open);
+        return;
+
+    case MT_SIGIL_A:
+    case MT_SIGIL_B:
+    case MT_SIGIL_C:
+    case MT_SIGIL_D:
+    case MT_SIGIL_E:
+        for (i = 0; i < MAXPLAYERS; i++)
+        {
+            if (!P_GiveWeapon(&players[i], wp_sigil, false))
+            {
+                if (++players[i].sigiltype > 4)
+                    players[i].sigiltype = 4;
+            }
+
+            // haleyjd 20110225: fixed these two assignments which Watcom munged
+            // up in the assembly by pre-incrementing the pointer into players[]
+            players[i].pendingweapon = wp_sigil;
+            players[i].st_update = true;
+        }
+        return;
+
+    case MT_TOKEN_ALARM:
+        sprintf(plrkilledmsg, "You Fool!  You've set off the alarm");
+        P_NoiseAlert(players[0].mo, players[0].mo);
+        if (!deathmatch)
+            players[consoleplayer].message = plrkilledmsg;
+        return;
+
+    default:
+        break;
+    }
+
+    // villsa [STRIFE] toss out item
+    if (!deathmatch || !(mobjinfo[item].flags & MF_NOTDMATCH))
+    {
+        mo = P_SpawnMobj(target->x, target->y, target->z + (24 * FRACUNIT), item);
+        mo->momx += ((P_Random() & 7) - (P_Random() & 7)) << FRACBITS;
+        mo->momy += ((P_Random() & 7) - (P_Random() & 7)) << FRACBITS;
+        mo->flags |= (MF_SPECIAL | MF_DROPPED);   // special versions of items
+    }
+}
+
+//
+// P_IsMobjBoss
+//
+// villsa [STRIFE] new function
+//
+static boolean P_IsMobjBoss(mobjtype_t type)
+{
+    switch(type)
+    {
+    case MT_PROGRAMMER:
+    case MT_BISHOP:
+    case MT_RLEADER:
+    case MT_ORACLE:
+    case MT_PRIEST:
+        return true;
+
+    default:
+        return false;
+    }
 }
 
 
@@ -759,148 +1075,344 @@ P_KillMobj
 // Source can be NULL for slime, barrel explosions
 // and other environmental stuff.
 //
-void
-P_DamageMobj
-( mobj_t*	target,
-  mobj_t*	inflictor,
-  mobj_t*	source,
-  int 		damage )
+// [STRIFE] Extensive changes for spectrals, fire damage, disintegration, and
+//  a plethora of mobjtype-specific hacks.
+//
+void P_DamageMobj(mobj_t* target, mobj_t* inflictor, mobj_t* source, int damage)
 {
-    unsigned	ang;
-    int		saved;
+    angle_t     ang;
+    int         saved;
     player_t*	player;
-    fixed_t	thrust;
-    int		temp;
-	
-    if ( !(target->flags & MF_SHOOTABLE) )
-	return;	// shouldn't happen...
-		
-    if (target->health <= 0)
-	return;
+    fixed_t     thrust;
+    int         temp;
 
-    if ( target->flags & MF_SKULLFLY )
+    if (target->health <= 0)
+        return;
+
+    if(!(target->flags & MF_SHOOTABLE) )
+        return; // shouldn't happen...
+
+    // villsa [STRIFE] unused - skullfly check (removed)
+
+    // villsa [STRIFE] handle spectral stuff
+    // notes on projectile health:
+    // -2 == enemy spectral projectile
+    // -1 == player spectral projectile
+
+    // haleyjd 20110203: refactored completely
+    if(inflictor && (inflictor->flags & MF_SPECTRAL))
     {
-	target->momx = target->momy = target->momz = 0;
+        // players aren't damaged by their own (or others???) sigils
+        // STRIFE-TODO: verify in deathmatch
+        if(target->type == MT_PLAYER && inflictor->health == -1)
+            return;
+        // enemies aren't damaged by enemy sigil attacks
+        if((target->flags & MF_SPECTRAL) && inflictor->health == -2)
+            return;
+        // Macil2, Oracle, and Spectre C cannot be damaged by Sigil A
+        switch(target->type)
+        {
+        case MT_RLEADER2:
+        case MT_ORACLE:
+        case MT_SPECTRE_C:
+            // haleyjd: added source->player validity check for safety...
+            if(source->player->sigiltype < 1)
+                return;
+        default:
+            break;
+        }
     }
-	
+
+    // villsa [STRIFE] new checks for various actors
+    if(inflictor)
+    {
+        // Fire damage inflictors
+        if(inflictor->type == MT_SFIREBALL || 
+           inflictor->type == MT_C_FLAME   ||
+           inflictor->type == MT_PFLAME)
+        {
+            temp = damage / 2;
+
+            if(P_IsMobjBoss(target->type) == true)
+                damage = temp;
+            else if(inflictor->type == MT_PFLAME)
+            {
+                damage = temp;
+                // robots take very little damage
+                if(target->flags & MF_NOBLOOD)
+                    damage = temp / 2;
+            }
+        }
+        else
+        {
+            switch(inflictor->type)
+            {
+            case MT_HOOKSHOT:
+                // haleyjd 20110203: should use source, not inflictor
+                ang = R_PointToAngle2(
+                        target->x,
+                        target->y,
+                        source->x,
+                        source->y) >> ANGLETOFINESHIFT;
+
+                target->momx += FixedMul((12750*FRACUNIT) / target->info->mass, finecosine[ang]);
+                target->momy += FixedMul((12750*FRACUNIT) / target->info->mass, finesine[ang]);
+                target->reactiontime += 10;
+
+                temp = P_AproxDistance(target->x - source->x, target->y - source->y);
+                temp /= target->info->mass;
+
+                if(temp < 1)
+                    temp = 1;
+
+                target->momz = (source->z - target->z) / temp;
+                break;
+
+            case MT_POISARROW:
+                // don't affect robots
+                if(target->flags & MF_NOBLOOD)
+                    return;
+
+                // instant kill
+                damage = target->health + 10;
+                break;
+
+            default:
+                // Spectral retaliation, though this may in fact be unreachable
+                // since non-spectral inflictors are mostly filtered out.
+                if(target->flags & MF_SPECTRAL
+                    && !(inflictor->flags & MF_SPECTRAL))
+                {
+                    P_SetMobjState(target, target->info->missilestate);
+                    return; // take no damage
+                }
+                break;
+            }
+        }
+    }
+
+    // villsa [STRIFE] special cases for shopkeepers and macil
+    if((target->type >= MT_SHOPKEEPER_W && target->type <= MT_SHOPKEEPER_M)
+        || target->type == MT_RLEADER)
+    {
+        if(source)
+            target->target = source;
+
+        P_SetMobjState(target, target->info->painstate);
+        return;
+    }
+
+    // villsa [STRIFE] handle fieldguard damage
+    if(target->type == MT_FIELDGUARD)
+    {
+        // degnin ores are only allowed to damage the fieldguard
+        if(!inflictor || inflictor->type != MT_DEGNINORE)
+            return;
+
+        damage = target->health;
+    }
+
     player = target->player;
-    if (player && gameskill == sk_baby)
-	damage >>= 1; 	// take half damage in trainer mode
-		
+
+    if(player && gameskill == sk_baby)
+        damage >>= 1;   // take half damage in trainer mode
+
 
     // Some close combat weapons should not
     // inflict thrust and push the victim out of reach,
     // thus kick away unless using the chainsaw.
     if (inflictor
-	&& !(target->flags & MF_NOCLIP)
-	&& (!source
-	    || !source->player
-	    || source->player->readyweapon != wp_chainsaw))
+        && !(target->flags & MF_NOCLIP)
+        && (!source
+         || !source->player
+         || source->player->readyweapon != wp_flame))
     {
-	ang = R_PointToAngle2 ( inflictor->x,
-				inflictor->y,
-				target->x,
-				target->y);
-		
-	thrust = damage*(FRACUNIT>>3)*100/target->info->mass;
+        ang = R_PointToAngle2(inflictor->x,
+                              inflictor->y,
+                              target->x,
+                              target->y);
 
-	// make fall forwards sometimes
-	if ( damage < 40
-	     && damage > target->health
-	     && target->z - inflictor->z > 64*FRACUNIT
-	     && (P_Random ()&1) )
-	{
-	    ang += ANG180;
-	    thrust *= 4;
-	}
-		
-	ang >>= ANGLETOFINESHIFT;
-	target->momx += FixedMul (thrust, finecosine[ang]);
-	target->momy += FixedMul (thrust, finesine[ang]);
+        thrust = damage * (FRACUNIT>>3) * 100 / target->info->mass;
+
+        // make fall forwards sometimes
+        if(damage < 40
+            && damage > target->health
+            && target->z - inflictor->z > 64*FRACUNIT
+            && (P_Random() & 1))
+        {
+            ang += ANG180;
+            thrust *= 4;
+        }
+
+        ang >>= ANGLETOFINESHIFT;
+        target->momx += FixedMul (thrust, finecosine[ang]);
+        target->momy += FixedMul (thrust, finesine[ang]);
     }
-    
+
     // player specific
-    if (player)
+    if(player)
     {
-	// end of game hell hack
-	if (target->subsector->sector->special == 11
-	    && damage >= target->health)
-	{
-	    damage = target->health - 1;
-	}
-	
+        // end of game hell hack
+        if (target->subsector->sector->special == 11
+            && damage >= target->health)
+        {
+            damage = target->health - 1;
+        }
 
-	// Below certain threshold,
-	// ignore damage in GOD mode, or with INVUL power.
-	if ( damage < 1000
-	     && ( (player->cheats&CF_GODMODE)
-		  || player->powers[pw_invulnerability] ) )
-	{
-	    return;
-	}
-	
-	if (player->armortype)
-	{
-	    if (player->armortype == 1)
-		saved = damage/3;
-	    else
-		saved = damage/2;
-	    
-	    if (player->armorpoints <= saved)
-	    {
-		// armor is used up
-		saved = player->armorpoints;
-		player->armortype = 0;
-	    }
-	    player->armorpoints -= saved;
-	    damage -= saved;
-	}
-	player->health -= damage; 	// mirror mobj health here for Dave
-	if (player->health < 0)
-	    player->health = 0;
-	
-	player->attacker = source;
-	player->damagecount += damage;	// add damage after armor / invuln
 
-	if (player->damagecount > 100)
-	    player->damagecount = 100;	// teleport stomp does 10k points...
-	
-	temp = damage < 100 ? damage : 100;
+        // Below certain threshold,
+        // ignore damage in GOD mode.
+        // villsa [STRIFE] removed pw_invulnerability check
+        if(damage < 1000 && (player->cheats & CF_GODMODE))
+            return;
 
-	if (player == &players[consoleplayer])
-	    I_Tactile (40,10,40+temp*2);
+        // villsa [STRIFE] flame attacks don't damage player if wearing envirosuit
+        if(player->powers[pw_ironfeet] && inflictor)
+        {
+            if(inflictor->type == MT_SFIREBALL || 
+               inflictor->type == MT_C_FLAME   || 
+               inflictor->type == MT_PFLAME)
+            {
+                damage = 0;
+            }
+        }
+
+        if(player->armortype)
+        {
+            if (player->armortype == 1)
+                saved = damage/3;
+            else
+                saved = damage/2;
+
+            if(player->armorpoints <= saved)
+            {
+                // armor is used up
+                saved = player->armorpoints;
+                player->armortype = 0;
+
+                // villsa [STRIFE]
+                P_UseInventoryItem(player, SPR_ARM1);
+                P_UseInventoryItem(player, SPR_ARM2);
+            }
+            player->armorpoints -= saved;
+            damage -= saved;
+        }
+        player->health -= damage;   // mirror mobj health here for Dave
+        
+        // [STRIFE] haleyjd 20130302: bug fix - this is *not* capped here.
+        //if(player->health < 0)
+        //    player->health = 0;
+
+        player->attacker = source;
+
+        // haleyjd 20110203 [STRIFE]: target->target set here
+        if(target != source)
+            target->target = source;
+
+        player->damagecount += damage;  // add damage after armor / invuln
+
+        if(player->damagecount > 100)
+            player->damagecount = 100;  // teleport stomp does 10k points...
+
+        temp = damage < 100 ? damage : 100;
     }
-    
+
     // do the damage	
-    target->health -= damage;	
-    if (target->health <= 0)
+    target->health -= damage;
+
+    // villsa [STRIFE] auto use medkits
+    if(player && player->health < 50)
     {
-	P_KillMobj (source, target);
-	return;
+        if(deathmatch || player->cheats & CF_AUTOHEALTH)
+        {
+            while(player->health < 50 && P_UseInventoryItem(player, SPR_MDKT));
+            while(player->health < 50 && P_UseInventoryItem(player, SPR_STMP));
+        }
     }
 
-    if ( (P_Random () < target->info->painchance)
-	 && !(target->flags&MF_SKULLFLY) )
-    {
-	target->flags |= MF_JUSTHIT;	// fight back!
-	
-	P_SetMobjState (target, target->info->painstate);
-    }
-			
-    target->reactiontime = 0;		// we're awake now...	
 
-    if ( (!target->threshold || target->type == MT_VILE)
-	 && source && source != target
-	 && source->type != MT_VILE)
+    if(target->health <= 0)
     {
-	// if not intent on another player,
-	// chase after this one
-	target->target = source;
-	target->threshold = BASETHRESHOLD;
-	if (target->state == &states[target->info->spawnstate]
-	    && target->info->seestate != S_NULL)
-	    P_SetMobjState (target, target->info->seestate);
+        // villsa [STRIFE] grenades hurt... OUCH
+        if (inflictor && inflictor->type == MT_HEGRENADE)
+        {
+            target->health = target->info->spawnhealth;
+            target->health = -target->info->spawnhealth;
+        }
+        else if (!(target->flags & MF_NOBLOOD))
+        {
+            // villsa [STRIFE] disintegration death
+            if(inflictor &&
+                (inflictor->type == MT_STRIFEPUFF3 || 
+                 inflictor->type == MT_L_LASER     || 
+                 inflictor->type == MT_TORPEDO     || 
+                 inflictor->type == MT_TORPEDOSPREAD))
+            {
+                S_StartSound(target, sfx_dsrptr);
+                target->health = -6666;
+            }
+        }
+
+        // villsa [STRIFE] flame death stuff
+        if(!(target->flags & MF_NOBLOOD)
+            && inflictor
+            && (inflictor->type == MT_SFIREBALL || 
+                inflictor->type == MT_C_FLAME   || 
+                inflictor->type == MT_PFLAME))
+        {
+            target->flags &= ~(MF_SHOOTABLE|MF_FLOAT|MF_SHADOW|MF_MVIS);
+            if(target->player)
+            {
+                target->player->cheats |= CF_ONFIRE;
+                target->player->powers[pw_invisibility] = false;
+                target->player->readyweapon = 0;
+                P_SetPsprite(target->player, ps_weapon, S_WAVE_00); // 02
+                P_SetPsprite(target->player, ps_flash, S_NULL);
+            }
+
+            P_SetMobjState(target, S_BURN_00);  // 349
+            S_StartSound(target, sfx_burnme);
+
+            return;
+        }
+        
+        P_KillMobj(source, target);
+        return;
     }
-			
+
+    // villsa [STRIFE] set crash state
+    if(target->health <= 6 && target->info->crashstate)
+    {
+        P_SetMobjState(target, target->info->crashstate);
+        return;
+    }
+
+    if(damage)
+    {
+        // villsa [STRIFE] removed unused skullfly flag
+        if(P_Random() < target->info->painchance) 
+        {
+            target->flags |= MF_JUSTHIT;    // fight back!
+            P_SetMobjState (target, target->info->painstate);
+        }
+    }
+
+    target->reactiontime = 0;       // we're awake now...
+
+    // villsa [STRIFE] new checks for thing types
+    if (target->type != MT_PROGRAMMER
+        && (!target->threshold || target->type == MT_ENTITY)
+        && source && source != target
+        && source->type != MT_ENTITY
+        && ((source->flags & MF_ALLY) != (target->flags & MF_ALLY)))
+    {
+        // if not intent on another player,
+        // chase after this one
+        target->target = source;
+        target->threshold = BASETHRESHOLD;
+
+        if(target->state == &states[target->info->spawnstate]
+           && target->info->seestate != S_NULL)
+            P_SetMobjState (target, target->info->seestate);
+    }
 }
-

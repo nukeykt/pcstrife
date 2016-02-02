@@ -1,7 +1,8 @@
 //
 // Copyright (C) 1993-1996 Id Software, Inc.
 // Copyright (C) 1993-2008 Raven Software
-// Copyright (C) 2015 Alexey Khokholov (Nuke.YKT)
+// Copyright (C) 2005-2014 Simon Howard
+// Copyright (C) 2015-2016 Alexey Khokholov (Nuke.YKT)
 //
 // This program is free software; you can redistribute it and/or
 // modify it under the terms of the GNU General Public License
@@ -22,17 +23,19 @@
 #define __D_ITEMS__
 
 #include "doomdef.h"
+#include "doomtype.h"
 
 
 // Weapon info: sprite frames, ammunition use.
 typedef struct
 {
-    ammotype_t	ammo;
-    int		upstate;
-    int		downstate;
-    int		readystate;
-    int		atkstate;
-    int		flashstate;
+    ammotype_t  ammo;
+    int         upstate;
+    int         downstate;
+    int         readystate;
+    int         atkstate;
+    int         flashstate;
+    boolean     availabledemo;    // villsa [STRIFE]
 
 } weaponinfo_t;
 
